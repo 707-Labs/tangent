@@ -135,6 +135,7 @@ morphs the shell into a two-pane split (`lg:max-w-7xl`) via a one-shot `transiti
 |---|---|
 | `/` | The infinite feed: scroll a stream of connected article cards; like/dive to steer it; open the reader pane and the trail of where you've been. |
 | `/start` | New tangent: search Wikipedia or pick from "Today on Wikipedia" (featured / DYK / on this day / news / trending) to seed a fresh feed. |
+| `/graph` | Zoom-out playground (prototype): the current article centered with its live candidate pool fanned into directional sectors (wild / place / deeper / theme / era), a tappable era-place "zoom out" ladder, and a re-rootable trail. Client-only sandbox for the ambient-minimap idea — not linked from the feed yet. |
 | `/about` | Static page — what Tangent is, where content comes from, licensing and privacy. |
 | `/terms` | Terms of Use + Privacy in one plain-language page. |
 | `/auth/verify` | Magic-link verification landing (sign-in token check; shows recovery copy on a spent/expired link). |
