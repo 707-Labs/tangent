@@ -45,6 +45,30 @@ bun run diag.ts "Adolf Hitler"   # inspect how the scorer sees specific cached p
   classifier are modelling assumptions — read the adaptive-vs-control _lift_ (with its
   CI and n), not the absolute on-interest rate, as the robust signal.
 
+## What it found (2026-07-25): directional share tuning
+
+Full grid on the directional-tangent engine, baseline (directionWildShare 0.25)
+vs tuned (0.15), same night, same harness, 660 journeys each:
+
+- **Wild tangents are the worst-received class.** Baseline healed (fast-skip)
+  rates: era 39.2% (n=222), place 40.1% (n=725), theme 37.6% (n=1012), wild
+  43.1% (n=1621) — the direction labels aren't lying, and unframed jumps get
+  skipped most. Wild also held 45.3% of tangents against the 25% deliberate
+  share: thin directional pools force it (era starved at 6.2%).
+- **Lowering the deliberate wild roll 0.25 → 0.15 shifted share to the better
+  classes**: directed 54.7% → 59.9%, healed-rate gap directed-vs-wild widened
+  (34.2–38.4% vs 44.9%). Overall tangent healed rate 40.7% → 39.8% (direction
+  right, size within noise).
+- **No invariant moved**: bimodality identical (in-run 0.191 vs tangent 0.116,
+  CIs disjoint), zero cluster landings by step 5, pooled learning lift +5.2%
+  vs baseline's +4.9% (within noise). Dead-ends fell 142 → 43/660, but the
+  baseline run fought live-fetch throttling (2,573 fetches vs 798) — a fetch
+  artifact, not the config change.
+- **Untouched gap, next lever:** drift breaks (thin-pool fall-throughs) are
+  37.6% of all run breaks, jump the farthest (cat-token 0.094 vs 0.115 for
+  deliberate tangents), and render unframed. Framing or direction-biasing the
+  drift pick is the highest-value remaining leap-feel work.
+
 ## What it found (2026-07-17): run-based engine validation
 
 Full grid on the run-based engine (complete categories in cache; both engines

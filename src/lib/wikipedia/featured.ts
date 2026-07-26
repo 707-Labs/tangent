@@ -85,6 +85,18 @@ const SECTION_CAP = 8;
 const NEWS_CAP = 6;
 
 /**
+ * Cap a year-sorted list by sampling evenly across it instead of truncating.
+ * The feed lists "on this day" events newest-first, so a plain head-slice keeps
+ * only the 20th-century tail; an even spread preserves the century range that
+ * makes the timeline feel deep.
+ */
+function evenSpread<T>(items: T[], cap: number): T[] {
+	if (items.length <= cap) return items;
+	const step = items.length / cap;
+	return Array.from({ length: cap }, (_, i) => items[Math.floor(i * step)]);
+}
+
+/**
  * Perennial Wikipedia housekeeping pages that dominate "most read" but make terrible
  * rabbit-hole starts: the portal itself, the rolling obituary, the "year in X" indexes,
  * and any non-article namespace that slips through.
@@ -196,14 +208,18 @@ function newsSection(stories: FeedNews[]): TodaySection | null {
 }
 
 function onThisDaySection(events: FeedOnThisDay[]): TodaySection | null {
-	const picks = bestPerGroup(
+	// Rank every event (no cap yet), order the timeline oldest-first, then even-spread
+	// down to the cap so the shown rows span the centuries instead of clustering in
+	// the recent decades the feed lists first.
+	const all = bestPerGroup(
 		events.map((event) => ({
 			candidates: (event.pages ?? []).map(summaryToCandidate).filter((c) => isArticleSeed(c.title)),
 			hook: event.text ?? null,
 			year: event.year ?? null
 		})),
-		SECTION_CAP
-	);
+		Infinity
+	).sort((a, b) => (a.year ?? Infinity) - (b.year ?? Infinity));
+	const picks = evenSpread(all, SECTION_CAP);
 	return picks.length ? { id: 'onthisday', label: 'On this day', picks } : null;
 }
 
@@ -251,13 +267,14 @@ export async function fetchToday(date: Date): Promise<TodayFeed> {
 	if (!feed) return { date: isoDate, sections: [] };
 
 	// Order by fit for the "get sucked in" mission, not by the front page's own hierarchy:
-	// the surprising DYK hooks and historical "on this day" entries lead, so the block opens
-	// on its most on-mission content. (It also keeps a single divisive featured article — the
-	// front page is often headlined by current political figures — out of the lead slot.)
+	// "on this day" leads — historical events are the most reliably captivating way into a
+	// tangent, and each row doubles as a ready-made launch — then the surprising DYK hooks.
+	// (It also keeps a single divisive featured article — the front page is often headlined
+	// by current political figures — out of the lead slot.)
 	const dyk = await dykSection(feed.dyk ?? []);
 	const sections = [
-		dyk,
 		onThisDaySection(feed.onthisday ?? []),
+		dyk,
 		featuredSection(feed.tfa),
 		newsSection(feed.news ?? []),
 		trendingSection(feed.mostread?.articles ?? [])
@@ -267,4 +284,4 @@ export async function fetchToday(date: Date): Promise<TodayFeed> {
 }
 
 // Exported for unit tests; not part of the section-building surface.
-export const _internal = { dykSubject, isArticleSeed, stripHtml };
+export const _internal = { dykSubject, isArticleSeed, stripHtml, evenSpread, onThisDaySection };

@@ -2,10 +2,18 @@
 	import { goto } from '$app/navigation';
 	import type { SearchResult } from '$lib/wikipedia/types';
 	import type { PageProps } from './$types';
-	import { randomSeed, SEEDS, SEED_CATEGORIES, type SeedCategory } from '$lib/seeds';
+	import { randomSeed, SEED_CATEGORIES } from '$lib/seeds';
 	import BrandMark from '$lib/components/BrandMark.svelte';
 	import RelationIcon from '$lib/components/RelationIcon.svelte';
-	import { Search } from '@lucide/svelte';
+	import {
+		Search,
+		Landmark,
+		PawPrint,
+		Mountain,
+		Palette,
+		Telescope,
+		FlaskConical
+	} from '@lucide/svelte';
 
 	// `data.today` is a streamed promise: the shell paints immediately and the shelves
 	// fill in when Wikipedia's Main Page picks arrive (server-cached per UTC day).
@@ -16,10 +24,24 @@
 	let loading = $state(false);
 	let highlighted = $state(-1);
 
-	// Mood filter for the seed chips: null shows the server's random sample; a
-	// category shows ALL of that category's seeds (small enough to list whole).
-	let mood = $state<SeedCategory | null>(null);
-	const moodSeeds = $derived(mood === null ? data.seeds : SEEDS.filter((s) => s.category === mood));
+	// One icon per mood tile, from the same geometric icon set the rest of the UI uses.
+	const MOOD_ICONS = {
+		history: Landmark,
+		animals: PawPrint,
+		geography: Mountain,
+		culture: Palette,
+		space: Telescope,
+		science: FlaskConical
+	} as const;
+
+	/** "July 25" from the feed's ISO date, pinned to UTC like the feed itself. */
+	function prettyDate(iso: string): string {
+		return new Intl.DateTimeFormat('en-US', {
+			month: 'long',
+			day: 'numeric',
+			timeZone: 'UTC'
+		}).format(new Date(`${iso}T00:00:00Z`));
+	}
 
 	// The listbox popup is shown (and the combobox is "expanded") whenever there's
 	// a usable query — including the loading and no-match states, not just hits.
@@ -192,28 +214,55 @@
 		Surprise me
 	</button>
 
+	<!-- Mood tiles: the categories entry point, promoted to the front door. One tap
+	     dives straight into a curated seed from that subject — starting is the whole
+	     struggle, so a tile launches the run instead of opening another menu. -->
+	<div class="mt-12 w-full text-left">
+		<p class="text-xs font-medium tracking-widest text-faint uppercase">In the mood for</p>
+		<div class="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-6">
+			{#each SEED_CATEGORIES as cat (cat.id)}
+				{@const MoodIcon = MOOD_ICONS[cat.id]}
+				<button
+					type="button"
+					onclick={() => enter(randomSeed(cat.id).title)}
+					class="group flex flex-col items-center gap-2 rounded-2xl border border-hair
+						bg-surface/60 px-2 py-4 transition-all hover:border-accent/50 hover:bg-surface
+						active:scale-95"
+				>
+					<MoodIcon class="size-5 text-muted transition-colors group-hover:text-accent" />
+					<span class="text-sm font-medium text-ink">{cat.label}</span>
+				</button>
+			{/each}
+		</div>
+		<p class="mt-2 text-xs text-faint">Tap a mood to dive straight in.</p>
+	</div>
+
 	{#await data.today}
 		<section class="mt-14 w-full text-left" aria-hidden="true">
 			<p class="text-xs font-medium tracking-widest text-faint uppercase">Today on Wikipedia</p>
 			<p class="mt-1 text-sm text-muted">Fresh from the front page — updated every day.</p>
 
 			<div class="mt-6 flex flex-col gap-8">
-				{#each ['first', 'second'] as row (row)}
-					<!-- First row mirrors the wider/taller "Did you know" cards so the
-					     stream-in doesn't shift the layout. -->
-					<div>
-						<div class="mb-3 h-4 w-28 animate-pulse rounded bg-surface-2"></div>
-						<div class="no-scrollbar shelf-fade -mx-1 flex gap-3 overflow-x-hidden px-1 pb-2">
-							{#each { length: 6 }, i (i)}
-								<div
-									class="{row === 'first'
-										? 'h-64 w-56'
-										: 'h-48 w-44'} shrink-0 animate-pulse rounded-2xl bg-surface-2"
-								></div>
-							{/each}
-						</div>
+				<!-- First block mirrors the "On this day" timeline rows, second the DYK
+				     card shelf, so the stream-in doesn't shift the layout. -->
+				<div>
+					<div class="mb-3 h-4 w-28 animate-pulse rounded bg-surface-2"></div>
+					<div class="overflow-hidden rounded-2xl border border-hair">
+						{#each { length: 4 }, i (i)}
+							<div
+								class="h-16 animate-pulse border-b border-hair bg-surface-2/60 last:border-b-0"
+							></div>
+						{/each}
 					</div>
-				{/each}
+				</div>
+				<div>
+					<div class="mb-3 h-4 w-28 animate-pulse rounded bg-surface-2"></div>
+					<div class="no-scrollbar shelf-fade -mx-1 flex gap-3 overflow-x-hidden px-1 pb-2">
+						{#each { length: 6 }, i (i)}
+							<div class="h-64 w-56 shrink-0 animate-pulse rounded-2xl bg-surface-2"></div>
+						{/each}
+					</div>
+				</div>
 			</div>
 		</section>
 	{:then today}
@@ -225,8 +274,55 @@
 				<div class="mt-6 flex flex-col gap-8">
 					{#each today.sections as section (section.id)}
 						<div>
-							<h2 class="mb-3 text-sm font-semibold text-ink">{section.label}</h2>
-							{#if section.id === 'featured'}
+							<h2 class="mb-3 text-sm font-semibold text-ink">
+								{section.id === 'onthisday'
+									? `${section.label} · ${prettyDate(today.date)}`
+									: section.label}
+							</h2>
+							{#if section.id === 'onthisday'}
+								<!-- Timeline list, not a card shelf: the event sentence IS the hook, so
+								     it gets the full line — and every row is a ready-made tangent launch
+								     seeded from the event's best article. -->
+								<ol class="overflow-hidden rounded-2xl border border-hair bg-surface/60">
+									{#each section.picks as pick (pick.title)}
+										<li class="border-b border-hair last:border-b-0">
+											<a
+												href={seedHref(pick.title)}
+												class="group flex items-start gap-4 px-4 py-3.5 transition-colors
+													hover:bg-surface-2"
+											>
+												<span
+													class="w-12 shrink-0 pt-px text-right font-display text-sm
+														font-semibold text-accent tabular-nums">{pick.year ?? '·'}</span
+												>
+												<span class="min-w-0 flex-1">
+													<span class="block text-sm leading-relaxed text-read"
+														>{pick.hook ?? pick.title}</span
+													>
+													{#if pick.hook}
+														<span
+															class="mt-1.5 inline-flex items-center gap-1.5 text-xs
+																font-medium text-faint transition-colors
+																group-hover:text-accent"
+														>
+															<RelationIcon relation="seed" class="size-3.5" />
+															Tangent from {pick.title}
+														</span>
+													{/if}
+												</span>
+												{#if pick.thumbnail}
+													<img
+														src={pick.thumbnail.source}
+														alt=""
+														loading="lazy"
+														class="mt-0.5 size-12 shrink-0 rounded-lg object-cover"
+													/>
+												{/if}
+											</a>
+										</li>
+									{/each}
+								</ol>
+							{:else if section.id === 'featured'}
 								<!-- Single pick, so it gets a full-width hero card instead of a
 								     one-card shelf. Stays mid-list — fetchToday deliberately keeps
 								     the often-topical featured article out of the lead slot. -->
@@ -320,40 +416,8 @@
 	<div class="mt-12 w-full">
 		<p class="mb-4 text-xs font-medium tracking-widest text-faint uppercase">Or pick a seed</p>
 
-		<!-- Mood row: filters the seed chips to one subject, so "in the mood for
-		     animals" is an entry point rather than a hunt through the pile.
-		     Tapping the active mood clears it back to the mixed sample. -->
-		<div class="mb-4 flex flex-wrap justify-center gap-2">
-			{#each SEED_CATEGORIES as cat (cat.id)}
-				<button
-					type="button"
-					aria-pressed={mood === cat.id}
-					onclick={() => (mood = mood === cat.id ? null : cat.id)}
-					class="rounded-full border px-3.5 py-1.5 text-sm font-medium transition-all
-						active:scale-95 {mood === cat.id
-						? 'border-accent/60 bg-accent/10 text-accent'
-						: 'border-hair bg-surface/60 text-muted hover:border-accent/50 hover:text-ink'}"
-				>
-					{cat.label}
-				</button>
-			{/each}
-		</div>
-
 		<div class="flex flex-wrap justify-center gap-2">
-			{#if mood !== null}
-				{@const active = mood}
-				<button
-					type="button"
-					onclick={() => enter(randomSeed(active).title)}
-					class="inline-flex items-center gap-1.5 rounded-full border border-spark/30 bg-spark/5
-						px-3 py-1.5 text-sm font-medium text-spark transition-all hover:bg-spark/10
-						active:scale-95"
-				>
-					<RelationIcon relation="surprise" class="size-3.5" />
-					Surprise me
-				</button>
-			{/if}
-			{#each moodSeeds as seed (seed.title)}
+			{#each data.seeds as seed (seed.title)}
 				<a
 					href={seedHref(seed.title)}
 					class="rounded-full border border-hair bg-surface/60 px-3 py-1.5 text-sm

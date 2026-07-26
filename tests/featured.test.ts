@@ -3,7 +3,7 @@ import type { Candidate } from '../src/lib/wikipedia/types';
 import { rankSeeds } from '../src/lib/feed/score';
 import { _internal } from '../src/lib/wikipedia/featured';
 
-const { dykSubject, isArticleSeed, stripHtml } = _internal;
+const { dykSubject, isArticleSeed, stripHtml, evenSpread, onThisDaySection } = _internal;
 
 function candidate(overrides: Partial<Candidate> = {}): Candidate {
 	return {
@@ -109,5 +109,37 @@ describe('stripHtml', () => {
 		expect(stripHtml('<!--Jun 13-->In basketball, the <a href="x">Knicks</a> win.')).toBe(
 			'In basketball, the Knicks win.'
 		);
+	});
+});
+
+describe('evenSpread', () => {
+	it('returns the list unchanged when at or under the cap', () => {
+		expect(evenSpread([1, 2, 3], 8)).toEqual([1, 2, 3]);
+	});
+
+	it('samples evenly across the range, keeping the first item', () => {
+		const spread = evenSpread([1, 2, 3, 4, 5, 6, 7, 8], 4);
+		expect(spread).toEqual([1, 3, 5, 7]);
+	});
+});
+
+describe('onThisDaySection', () => {
+	it('orders the timeline oldest-first regardless of feed order', () => {
+		const section = onThisDaySection([
+			{ text: 'Concorde crashed near Paris.', year: 2000, pages: [{ title: 'Concorde' }] },
+			{ text: 'Viking 1 photographed the face on Mars.', year: 1976, pages: [{ title: 'Viking 1' }] }
+		]);
+		expect(section?.picks.map((p) => p.year)).toEqual([1976, 2000]);
+	});
+
+	it('keeps the event sentence as the hook on the picked article', () => {
+		const section = onThisDaySection([
+			{ text: 'Viking 1 photographed the face on Mars.', year: 1976, pages: [{ title: 'Viking 1' }] }
+		]);
+		expect(section?.picks[0]).toMatchObject({
+			title: 'Viking 1',
+			hook: 'Viking 1 photographed the face on Mars.',
+			year: 1976
+		});
 	});
 });
