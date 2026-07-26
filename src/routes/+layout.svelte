@@ -13,7 +13,7 @@
 	import { page } from '$app/state';
 	import BrandMark from '$lib/components/BrandMark.svelte';
 	import ProfilePanel from '$lib/components/ProfilePanel.svelte';
-	import { Route, SlidersHorizontal, Plus } from '@lucide/svelte';
+	import { Route, SlidersHorizontal, Plus, Waypoints } from '@lucide/svelte';
 	import { profile } from '$lib/engagement/profile.svelte';
 	import { reader } from '$lib/reader/readerState.svelte';
 	import { feed } from '$lib/feed/feedState.svelte';
@@ -94,6 +94,21 @@
 			</a>
 
 			<div class="flex items-center gap-2">
+				<!-- Graph: the explorable canvas. Seeds itself from the feed's chain tip
+				     (persisted trail), so mid-feed it opens the map of where you are. -->
+				<a
+					href="/graph"
+					aria-label="Graph view"
+					aria-current={page.url.pathname === '/graph' ? 'page' : undefined}
+					class="icon-btn inline-flex items-center justify-center rounded-full p-1.5
+						transition-colors hover:bg-surface-2 hover:text-ink
+						{page.url.pathname === '/graph' ? 'text-ink' : 'text-muted'}"
+				>
+					<!-- Nodes joined by edges — the knowledge-graph glyph, same geometric
+					     vocabulary as the trail's waypoints route. -->
+					<Waypoints class="size-5" aria-hidden="true" />
+				</a>
+
 				<!-- Trail: opens the panel of articles you've actually reached. Hidden until
 				     you're past the seed; a subtle count badge stands in for the old chip. -->
 				{#if showTrail}
@@ -135,9 +150,12 @@
 					<ProfilePanel onClose={() => (profileOpen = false)} />
 				{/if}
 
-				<!-- Below ~320px the wordmark + this pill overflow the bar, which widens the
-				     document and makes the feed column look detached from the viewport. Collapse
-				     the label to an icon-only button there; sr-only keeps the accessible name. -->
+				<!-- The wordmark + this pill can overflow the bar on narrow phones, which
+				     widens the document and makes the feed column look detached from the
+				     viewport. Collapse the label to an icon-only button there; the
+				     aria-label keeps the accessible name. Threshold is 26rem, not 20rem:
+				     with the graph icon and a trail badge also in the row, 375px screens
+				     had under 4px of slack and anything below 370px overflowed. -->
 				<!-- Read-fill primary pill (Ben's NewTangent kind): parchment fill with
 				     surface-2 text. The read/surface-2 pair inverts naturally in light
 				     themes, which is exactly his NewTangentLight colorway. -->
@@ -150,7 +168,7 @@
 						hover:opacity-90 active:scale-95"
 				>
 					<Plus class="size-4" aria-hidden="true" />
-					<span class="hidden min-[20rem]:inline">New tangent</span>
+					<span class="hidden min-[26rem]:inline">New tangent</span>
 				</a>
 			</div>
 		</div>

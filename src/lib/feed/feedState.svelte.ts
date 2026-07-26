@@ -401,9 +401,10 @@ class FeedState {
 					{ fromTitle, relation, runStart: selection.runReset },
 					selection.candidate.categories
 				);
-				if (selection.surprised) {
+				if (selection.surprised || selection.drifted) {
 					built.department = department(selection.candidate) ?? undefined;
 					built.direction = selection.direction;
+					built.drifted = selection.drifted;
 				}
 				this.#attachFoot(built, selection.foot);
 				this.#buffer.push(built);

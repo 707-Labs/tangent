@@ -27,6 +27,8 @@ bun run analyze.ts main          # aggregate results-main.json → report-main.m
 bun run jumpdist.ts main         # consecutive-card jump-distance report → report-jumpdist-main.md
 bun run compare.ts               # diff results-baseline.json vs results-main.json (save a baseline first: cp results-main.json results-baseline.json)
 bun run diag.ts "Adolf Hitler"   # inspect how the scorer sees specific cached pages
+bun run directions-report.ts main       # direction mix, healed-by-label, drift framing coverage
+bun run drift-coverage.ts baseline main # drift nameability across two runs (+ two-proportion CI)
 ```
 
 ## Notes
@@ -44,6 +46,42 @@ bun run diag.ts "Adolf Hitler"   # inspect how the scorer sees specific cached p
 - **Caveat:** the engagement probabilities and the `tasteAffinity`-based on-interest
   classifier are modelling assumptions — read the adaptive-vs-control _lift_ (with its
   CI and n), not the absolute on-interest rate, as the robust signal.
+
+## What it found (2026-07-26): framing the drift break
+
+The previous entry's "next lever" shipped: the drift pick (thin-pool
+fall-through) now gets a `driftDirectionBonus` toward candidates holding one
+nameable dimension of the broken run, and drift cards render the tangent
+divider. Full grid, 660 journeys, against the 0.15 run as baseline:
+
+- **Drift breaks are nameable far more often: 48.0% → 71.9%, +23.9 pp
+  (95% CI 21.0–26.8).** Measured by `drift-coverage.ts`, which reconstructs
+  each run's era/place context from the stored path and classifies the drift
+  pick — the same reconstruction on both files, so the delta is apples to
+  apples (the engine records 73.5% on the new run; the 1.6 pp gap is
+  reconstruction noise, not a second result). About half of the previously
+  unframed far jumps can now be named by the divider.
+- **It did NOT shrink the jump.** Drift felt-distance is unchanged on all
+  three lenses: cat-token 0.093 → 0.100 (CIs 0.088–0.098 vs 0.096–0.106,
+  overlapping), exact-cat 0.028 → 0.029, lexical 0.057 → 0.055. The bonus
+  moves the pick far enough to make it *explainable*, not far enough to make
+  it *closer*. Naming a leap and shortening one are separate levers; only the
+  first shipped.
+- **Whether framing reduces skips is UNMEASURED, not zero.** The harness gates
+  `healed` on `surprised` (only tangents can heal, matching the client, where
+  only surprises are detours), so every drift break reports healed=false by
+  construction. Any framed-vs-unframed skip comparison needs the raw per-step
+  reaction recorded first — that's the next instrumentation task, and until
+  then the reader-facing benefit is a design argument, not a measurement.
+- **No invariant moved**: pooled learning lift +4.9% (baseline +5.2%, within
+  noise), bimodality preserved (in-run 0.189 [0.185–0.193] vs tangent 0.113
+  [0.109–0.117], CIs disjoint), cluster landings 0.0% core / 1.7% any by step
+  30, tangent direction mix unchanged (directed 59.1% vs 59.9% — the tangent
+  path wasn't touched).
+- **Dead ends 43 → 133/660 is a fetch artifact, confirmed by instrumentation
+  rather than assumed**: `deadEndKind` is `fetch-failed` for 100% of them in
+  both runs (zero `engine-exhausted`, zero `no-links`), and this run made
+  2,413 live fetches against the baseline's 798.
 
 ## What it found (2026-07-25): directional share tuning
 

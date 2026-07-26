@@ -169,12 +169,14 @@ export function selectNext(candidates: Candidate[], ctx: EngineContext): Selecti
 		candidate: Candidate,
 		surprised: boolean,
 		runReset: boolean,
-		direction?: TangentDirection
+		direction?: TangentDirection,
+		drifted?: boolean
 	): Selection => ({
 		candidate,
 		surprised,
 		runReset,
 		direction,
+		drifted,
 		foot: footCandidate(scored, candidate.title)
 	});
 
@@ -195,8 +197,20 @@ export function selectNext(candidates: Candidate[], ctx: EngineContext): Selecti
 		}
 
 		// Drift fall-through: no jump worth taking, but still leave the neighborhood
-		// (variety stays applied) and start a new run.
-		return withFoot(pickWeighted(breakScored.slice(0, FEED.topK), ctx.rng), false, true);
+		// (variety stays applied) and start a new run. Drift jumps are the farthest
+		// transition class and the divider can only explain a NAMEABLE one, so
+		// candidates holding one direction of the broken run get a bonus (applied
+		// before the top-K cut, so it can promote into the pick window), and the
+		// winner ships with its direction for framing.
+		const driftRanked = breakScored
+			.map((s) => ({
+				...s,
+				selectionScore:
+					s.selectionScore + (classifyDirection(s.candidate, ctx) ? FEED.driftDirectionBonus : 0)
+			}))
+			.sort((a, b) => b.selectionScore - a.selectionScore);
+		const drifted = pickWeighted(driftRanked.slice(0, FEED.topK), ctx.rng);
+		return withFoot(drifted, false, true, classifyDirection(drifted, ctx) ?? undefined, true);
 	}
 
 	// In-run pick: coherence pulls toward the run's neighborhood.
