@@ -184,11 +184,17 @@ export const FEED = {
 	/**
 	 * Break-step bonus for drift candidates that hold one nameable direction of
 	 * the broken run (era/place/theme). Drift breaks — thin-pool fall-throughs —
-	 * are 37.6% of run breaks, jump the farthest of any transition class, and
+	 * are ~37% of run breaks, jump the farthest of any transition class, and
 	 * used to render unframed (2026-07-25 sim). The bonus tilts the drift pick
 	 * toward candidates whose jump the divider can NAME, without overriding a
 	 * clearly better unnameable pick. Sized between coherenceWeight and
-	 * categoryAffinityWeight as a sim-tuned starting prior.
+	 * categoryAffinityWeight.
+	 *
+	 * Measured at 0.9 (2026-07-26 sim, 660 journeys): nameable drift breaks
+	 * 48.0% -> 71.9% (+23.9 pp, 95% CI 21.0-26.8). It does NOT shrink the jump
+	 * — drift felt-distance is unchanged on all three lenses — so this buys
+	 * framing, not proximity. Whether framing reduces skips is unmeasured: the
+	 * sim's healed flag only applies to tangents. See scripts/feed-sim/README.
 	 */
 	driftDirectionBonus: 0.9,
 	/**

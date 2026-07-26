@@ -65,6 +65,33 @@ for (const d of ['era', 'place', 'theme', 'wild']) {
 	console.log(`  ${d.padEnd(6)} ${((100 * healed) / of.length).toFixed(1)}%  (n=${of.length})`);
 }
 
+// Drift breaks (runReset without surprised): the thin-pool fall-throughs the
+// 2026-07-25 framing change targets. Coverage = share that now carry a
+// nameable direction for the divider; healed split checks whether framed
+// drifts read better than unframed ones.
+const drifts: Step[] = [];
+for (const j of journeys) {
+	for (const step of j.path.slice(1)) {
+		if (step.runReset && !step.surprised) drifts.push(step);
+	}
+}
+console.log(`\ndrift breaks: ${drifts.length}`);
+if (drifts.length > 0) {
+	const framed = drifts.filter((d) => d.direction);
+	console.log(
+		`  framed (direction held): ${framed.length} (${((100 * framed.length) / drifts.length).toFixed(1)}%)`
+	);
+	for (const d of ['era', 'place', 'theme']) {
+		const n = drifts.filter((s) => s.direction === d).length;
+		if (n > 0) console.log(`    ${d.padEnd(6)} ${String(n).padStart(5)}`);
+	}
+	// Deliberately NO healed split here: the harness gates `healed` on
+	// `surprised` (sim.ts — only tangents can heal, matching the client, where
+	// only surprises are detours), so every drift break reports healed=false by
+	// construction. A framed-vs-unframed skip comparison needs the raw reaction
+	// recorded per step; until then this is unmeasurable, not zero.
+}
+
 // Hand-check sample: deterministic spread (every Nth) rather than random, so
 // re-runs show the same sample.
 console.log('\nsample labeled landings (run tail -> tangent):');
