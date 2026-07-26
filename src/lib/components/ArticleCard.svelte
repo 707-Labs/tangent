@@ -210,14 +210,13 @@
 				{liked ? 'Liked' : 'Like'}
 			</button>
 
-			<!-- Filled ink-on-void pill: the card's signature action reads as primary
-			     (Ben's Figma card), matching the nav's New-tangent treatment. -->
+			<!-- Read-fill primary pill (Ben's NewTangent kind), matching the nav CTA. -->
 			<button
 				type="button"
 				onclick={branch}
 				disabled={branching}
-				class="inline-flex items-center gap-1.5 rounded-full border border-hair bg-ink px-3
-					py-1.5 text-sm font-medium text-void transition-all hover:opacity-90
+				class="inline-flex items-center gap-1.5 rounded-full border border-hair bg-read px-3
+					py-1.5 text-sm font-medium text-surface-2 transition-all hover:opacity-90
 					active:scale-95 disabled:opacity-50"
 			>
 				{#if branching}

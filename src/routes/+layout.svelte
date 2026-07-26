@@ -138,14 +138,15 @@
 				<!-- Below ~320px the wordmark + this pill overflow the bar, which widens the
 				     document and makes the feed column look detached from the viewport. Collapse
 				     the label to an icon-only button there; sr-only keeps the accessible name. -->
-				<!-- Filled ink-on-void pill: the page's one primary CTA (Ben's Figma nav).
-				     Ink/void inversion keeps it high-contrast in every theme. -->
+				<!-- Read-fill primary pill (Ben's NewTangent kind): parchment fill with
+				     surface-2 text. The read/surface-2 pair inverts naturally in light
+				     themes, which is exactly his NewTangentLight colorway. -->
 				<a
 					href="/start"
 					data-cta
 					aria-label="New tangent"
 					class="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border
-						border-hair bg-ink px-3 py-1.5 text-sm font-medium text-void transition-all
+						border-hair bg-read px-3 py-1.5 text-sm font-medium text-surface-2 transition-all
 						hover:opacity-90 active:scale-95"
 				>
 					<Plus class="size-4" aria-hidden="true" />
