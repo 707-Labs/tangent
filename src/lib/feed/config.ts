@@ -182,6 +182,16 @@ export const FEED = {
 	 */
 	directionWildShare: 0.15,
 	/**
+	 * Break-step bonus for drift candidates that hold one nameable direction of
+	 * the broken run (era/place/theme). Drift breaks — thin-pool fall-throughs —
+	 * are 37.6% of run breaks, jump the farthest of any transition class, and
+	 * used to render unframed (2026-07-25 sim). The bonus tilts the drift pick
+	 * toward candidates whose jump the divider can NAME, without overriding a
+	 * clearly better unnameable pick. Sized between coherenceWeight and
+	 * categoryAffinityWeight as a sim-tuned starting prior.
+	 */
+	driftDirectionBonus: 0.9,
+	/**
 	 * Minimum cards between running feet. The engine offers a foot on most picks
 	 * (~60% of pools have an eligible hooky runner-up); the client shows at most
 	 * one per this many cards so feet read as marginalia, not a second feed.

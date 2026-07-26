@@ -399,6 +399,45 @@ describe('selectNext', () => {
 				expect(result?.candidate.title).toBe('Article B');
 				expect(result?.runReset).toBe(true);
 			});
+
+			it('marks the drift pick so clients can frame the break', () => {
+				const pool = neutralPool(FEED.topK + FEED.surpriseMinPool + 1);
+				const ctx = context({ runDepth: BREAK_DEPTH, rng: seq([0, 0]) });
+				expect(selectNext(pool, ctx)?.drifted).toBe(true);
+			});
+
+			it('does not mark a real tangent as drifted', () => {
+				const pool = [...neutralPool(FEED.topK), ...hookyTail(FEED.surpriseMinPool + 1)];
+				const ctx = context({ runDepth: BREAK_DEPTH, rng: seq([0.999, 0]) });
+				const result = selectNext(pool, ctx);
+				expect(result?.surprised).toBe(true);
+				expect(result?.drifted).toBeFalsy();
+			});
+
+			it('prefers a nameable drift and ships its direction for framing', () => {
+				// Equal hookless candidates; the one holding the run's era (elsewhere)
+				// must win via driftDirectionBonus, and the pick carries direction so
+				// the divider can name the jump.
+				const ctx = context({
+					runDepth: BREAK_DEPTH,
+					runEras: new Set(['1980s']),
+					runPlaces: new Set(['argentina']),
+					rng: seq([0, 0])
+				});
+				const pool = [
+					candidate({ title: 'Octopus', description: 'order of cephalopods', thumbnail: null }),
+					candidate({
+						title: '1985 Mexico City earthquake',
+						description: 'earthquake that struck Mexico in 1985',
+						categories: ['Category:Earthquakes in Mexico'],
+						thumbnail: null
+					})
+				];
+				const result = selectNext(pool, ctx);
+				expect(result?.candidate.title).toBe('1985 Mexico City earthquake');
+				expect(result?.drifted).toBe(true);
+				expect(result?.direction).toBe('era');
+			});
 		});
 
 		it('pushes the tangent landing out of the neighborhood via the variety penalty', () => {

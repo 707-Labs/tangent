@@ -28,6 +28,10 @@ export interface FeedCard {
 	/** How this tangent relates to the run it broke from (era/place/theme);
 	 *  absent on non-tangents and on wild-card tangents. Drives divider copy. */
 	direction?: TangentDirection;
+	/** True for a drift-break card (run reset without a deliberate jump) — gets
+	 *  the tangent divider so the topic turn is marked, but keeps its real link
+	 *  relation in the breadcrumb. */
+	drifted?: boolean;
 	/** A running foot to render after this card: a one-line fact from the pick's
 	 *  runner-up, tappable as a dive. Attached by cadence — most cards have none. */
 	foot?: { title: string; description: string | null };
@@ -114,8 +118,13 @@ export interface Selection {
 	candidate: Candidate;
 	/** True when this pick is a tangent — a deliberate run-breaking jump. */
 	surprised: boolean;
-	/** The dimension this tangent holds relative to the run it broke from;
-	 *  absent on non-tangents and wild-card tangents. */
+	/** True when a break fell through to a drift pick (thin tangent pool): a new
+	 *  run with no deliberate jump. Kept distinct from `surprised` so tangent
+	 *  metrics stay honest, but clients frame it the same way — the topic moved
+	 *  on either way, and an unmarked far jump reads as the feed losing the plot. */
+	drifted?: boolean;
+	/** The dimension this tangent (or drift pick) holds relative to the run it
+	 *  broke from; absent on in-run picks and wild-card jumps. */
 	direction?: TangentDirection;
 	/** True when this pick starts a new run (every tangent, plus the drift
 	 *  fall-through when the tangent pool was too shallow). Clients reset their
@@ -194,6 +203,9 @@ export interface NextResponse {
 	department?: string;
 	/** The tangent's direction relative to the broken run, when one was held. */
 	direction?: TangentDirection;
+	/** True for a drift-break pick — clients frame it like a tangent (divider)
+	 *  while keeping the real link relation in the breadcrumb. */
+	drifted?: boolean;
 	/** The picked candidate's era buckets / place tokens (directions.ts), ready
 	 *  for the client's run accumulation — pre-computed server-side so native
 	 *  clients never need their own extractor. Same pattern as categoryTokens. */

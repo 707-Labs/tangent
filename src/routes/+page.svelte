@@ -273,7 +273,7 @@
 		<ActionHint />
 		{#each feed.cards as card (card.id)}
 			{@const sourceId = sourceIdByCard.get(card.id)}
-			{#if card.connection.relation === 'surprise'}
+			{#if card.connection.relation === 'surprise' || card.drifted}
 				<TangentDivider department={card.department} direction={card.direction} />
 			{/if}
 			<div data-card={card.id} class="scroll-mt-20" class:wh-land={card.id === landedId}>

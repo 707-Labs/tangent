@@ -84,8 +84,11 @@ export const POST: RequestHandler = async ({ request, setHeaders }) => {
 				// native clients never need their own extractor.
 				eraTokens: [...eraBuckets(selection.candidate)],
 				placeTokens: [...placeTokens(selection.candidate)],
-				department: (selection.surprised && department(selection.candidate)) || undefined,
+				department:
+					((selection.surprised || selection.drifted) && department(selection.candidate)) ||
+					undefined,
 				direction: selection.direction,
+				drifted: selection.drifted,
 				foot: selection.foot
 					? { title: selection.foot.title, description: selection.foot.description }
 					: undefined
