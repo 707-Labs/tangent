@@ -150,9 +150,12 @@
 					<ProfilePanel onClose={() => (profileOpen = false)} />
 				{/if}
 
-				<!-- Below ~320px the wordmark + this pill overflow the bar, which widens the
-				     document and makes the feed column look detached from the viewport. Collapse
-				     the label to an icon-only button there; sr-only keeps the accessible name. -->
+				<!-- The wordmark + this pill can overflow the bar on narrow phones, which
+				     widens the document and makes the feed column look detached from the
+				     viewport. Collapse the label to an icon-only button there; the
+				     aria-label keeps the accessible name. Threshold is 26rem, not 20rem:
+				     with the graph icon and a trail badge also in the row, 375px screens
+				     had under 4px of slack and anything below 370px overflowed. -->
 				<!-- Read-fill primary pill (Ben's NewTangent kind): parchment fill with
 				     surface-2 text. The read/surface-2 pair inverts naturally in light
 				     themes, which is exactly his NewTangentLight colorway. -->
@@ -165,7 +168,7 @@
 						hover:opacity-90 active:scale-95"
 				>
 					<Plus class="size-4" aria-hidden="true" />
-					<span class="hidden min-[20rem]:inline">New tangent</span>
+					<span class="hidden min-[26rem]:inline">New tangent</span>
 				</a>
 			</div>
 		</div>
