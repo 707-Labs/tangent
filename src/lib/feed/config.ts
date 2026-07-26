@@ -172,8 +172,15 @@ export const FEED = {
 	 * Probability a break deliberately ignores available directions and picks
 	 * from the undirected wild pool anyway — serendipity must survive the
 	 * directional framing, or every tangent becomes an explainable next step.
+	 *
+	 * Lowered 0.25 -> 0.15 (2026-07-25 sim, 660 journeys): wild tangents were
+	 * healed (fast-skipped) at 43.1% vs 37.6-40.1% for directed ones, and wild
+	 * already lands 45% of tangents because thin directional pools force it —
+	 * the deliberate share sat on top of that floor. Genuine serendipity
+	 * survives at ~35-40% observed wild share; Ben's felt "leaps too large"
+	 * points at the unframed class, so the roll now favors the nameable jump.
 	 */
-	directionWildShare: 0.25,
+	directionWildShare: 0.15,
 	/**
 	 * Minimum cards between running feet. The engine offers a foot on most picks
 	 * (~60% of pools have an eligible hooky runner-up); the client shows at most
