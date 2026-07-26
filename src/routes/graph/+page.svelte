@@ -176,6 +176,9 @@
 		trail = backTo >= 0 ? trail.slice(0, backTo + 1) : [...trail, node];
 		loading = true;
 		error = null;
+		// Trail entries keep whatever the node knew when first visited — a bare one
+		// (seed, ladder rung) re-hydrates so re-rooting back doesn't lose the visuals.
+		if (!node.thumbnail) hydrate(node.title);
 		try {
 			const res = await fetch(`/api/links?from=${encodeURIComponent(node.title)}`);
 			const data = (await res.json()) as { candidates?: Candidate[]; error?: string };
