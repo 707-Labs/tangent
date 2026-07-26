@@ -13,7 +13,7 @@
 	import { page } from '$app/state';
 	import BrandMark from '$lib/components/BrandMark.svelte';
 	import ProfilePanel from '$lib/components/ProfilePanel.svelte';
-	import { Route, SlidersHorizontal, Plus } from '@lucide/svelte';
+	import { Route, SlidersHorizontal, Plus, Waypoints } from '@lucide/svelte';
 	import { profile } from '$lib/engagement/profile.svelte';
 	import { reader } from '$lib/reader/readerState.svelte';
 	import { feed } from '$lib/feed/feedState.svelte';
@@ -94,6 +94,21 @@
 			</a>
 
 			<div class="flex items-center gap-2">
+				<!-- Graph: the explorable canvas. Seeds itself from the feed's chain tip
+				     (persisted trail), so mid-feed it opens the map of where you are. -->
+				<a
+					href="/graph"
+					aria-label="Graph view"
+					aria-current={page.url.pathname === '/graph' ? 'page' : undefined}
+					class="icon-btn inline-flex items-center justify-center rounded-full p-1.5
+						transition-colors hover:bg-surface-2 hover:text-ink
+						{page.url.pathname === '/graph' ? 'text-ink' : 'text-muted'}"
+				>
+					<!-- Nodes joined by edges — the knowledge-graph glyph, same geometric
+					     vocabulary as the trail's waypoints route. -->
+					<Waypoints class="size-5" aria-hidden="true" />
+				</a>
+
 				<!-- Trail: opens the panel of articles you've actually reached. Hidden until
 				     you're past the seed; a subtle count badge stands in for the old chip. -->
 				{#if showTrail}
