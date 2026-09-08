@@ -523,6 +523,16 @@ body::before {
 .wiki-content ol {
 	list-style: decimal;
 }
+/* {{Plainlist}}: Wikipedia's TemplateStyles (list-style:none, no indent, tight margins)
+   are stripped, so these read as default bulleted/indented lists. Restore the plain look. */
+.wiki-content .plainlist ul,
+.wiki-content .plainlist ol,
+.wiki-content ul.plainlist,
+.wiki-content ol.plainlist {
+	list-style: none;
+	padding-left: 0;
+	margin: 0;
+}
 .wiki-content img {
 	max-width: 100%;
 	height: auto;
@@ -908,8 +918,7 @@ body::before {
 .wiki-content .mw-jump-link,
 .wiki-content .sidebar,
 .wiki-content .vertical-navbox,
-.wiki-content .IPA,
-.wiki-content .ext-phonos,
+.wiki-content .sistersitebox,
 .wiki-content .mw-tmh-player,
 .wiki-content sup.reference,
 .wiki-content .sister-inline-image,
@@ -917,6 +926,15 @@ body::before {
 .wiki-content ol.references,
 .wiki-content style,
 .wiki-content link {
+	display: none !important;
+}
+/* IPA respellings are editorial chrome only in the lead's readable respelling and
+   hatnotes — hide them there, but keep them in running prose so phonology tables
+   (English phonology, Tone (linguistics)) don't empty out. */
+.wiki-content .wh-lead .IPA,
+.wiki-content .wh-lead .ext-phonos,
+.wiki-content .hatnote .IPA,
+.wiki-content .hatnote .ext-phonos {
 	display: none !important;
 }
 /* The lead keeps the readable respelling (rin-AY-sənss) but its link points at a
@@ -1521,4 +1539,70 @@ body::before {
 .wiki-content div.noresize {
 	max-width: 100%;
 	overflow-x: auto;
+}
+
+/* Music scores ({{Music score}} / LilyPond, div.mw-ext-score): a black-on-transparent
+   SVG sheet — invisible on dark themes and shrunk by the global img max-width. Plate the
+   wrapper like a light drawing (no invert — scores have fine detail) and let the sheet
+   keep its natural width inside its .noresize scroller. */
+.wiki-content .mw-ext-score {
+	background: #faf6ec;
+	padding: 0.7rem;
+	border-radius: 0.5rem;
+}
+.wiki-content .mw-ext-score img {
+	max-width: none;
+	border-radius: 0;
+}
+
+/* Inline imagery in running text (flag icons, imgs directly in p/li/span): Tailwind's
+   preflight makes every img display:block, stranding flags and inline icons on their own
+   line. Re-inline only these — scoped so figure/.thumbinner/.quick-facts/.tmulti/gallery
+   imgs keep their block rules (:where() zeroes .flagicon to 0,1,1 so it stays below
+   .quick-facts img's 0,2,1). */
+.wiki-content :where(.flagicon) img,
+.wiki-content :is(p, li) > img,
+.wiki-content :is(p, li) > a > img,
+.wiki-content span > img {
+	display: inline-block;
+	vertical-align: middle;
+	border-radius: 0;
+}
+
+/* Parsoid <video> (media embeds): no web rule existed — block, cap, center, and match
+   the img corner radius. Mirrors iOS's existing video rule. */
+.wiki-content video {
+	display: block;
+	max-width: 100%;
+	margin-inline: auto;
+	border-radius: 0.5rem;
+}
+.wiki-content figure video {
+	display: block;
+	margin-inline: auto;
+}
+
+/* {{Quote box}} (.quotebox, e.g. The Raven): restyle as a centered blockquote — hair
+   left border + muted tone, capped like a figure. The template's inline border-width:1px
+   thins the 3px hairline (hence !important); the inner blockquote re-adds the generic
+   border/padding so we clear it. */
+.wiki-content .quotebox {
+	float: none;
+	max-width: min(100%, 30rem);
+	margin: 1em auto;
+	padding-left: 1em;
+	color: var(--color-faint);
+	border-left: 3px solid var(--color-hair-strong) !important;
+}
+.wiki-content .quotebox blockquote,
+.wiki-content .quotebox-quote {
+	margin: 0;
+	padding-left: 0;
+	border-left: 0;
+}
+
+/* Kartographer mapframes (a.mw-kartographer-map) ship an inline min-width (~250-280px)
+   that outgrows sub-300px columns — allow them to shrink to the column. */
+.wiki-content a.mw-kartographer-map {
+	min-width: 0 !important;
 }

@@ -62,6 +62,9 @@ enum ReaderCSS {
 	ul, ol { margin: 0 0 0.9em; padding-left: 1.4em; }
 	li { margin: 0.25em 0; }
 	ul { list-style: disc; } ol { list-style: decimal; }
+	/* {{Plainlist}}: Wikipedia's TemplateStyles (list-style:none, no indent) are stripped,
+	   so these read as default bulleted/indented lists. Restore the plain look. */
+	.plainlist ul, .plainlist ol, ul.plainlist, ol.plainlist { list-style: none; padding-left: 0; margin: 0; }
 	img, video { max-width: 100%; height: auto; border-radius: 0.5rem; background: var(--surface); }
 	/* Inline data-viz SVGs (graphs, small charts) carry an intrinsic px width that can
 	   exceed the column; cap to the column and scale height to match. */
@@ -178,10 +181,14 @@ enum ReaderCSS {
 	   this just nets any we couldn't parse. .navbar is the view·talk·edit / v·t·e chrome. */
 	.mw-editsection, .shortdescription, .noprint, .nomobile, .navbar, .navbox,
 	.navbox-styles, .metadata, .ambox, .mbox-image, .mw-empty-elt, .mw-jump-link,
-	.sidebar, .vertical-navbox, .IPA, .ext-phonos, .mw-tmh-player, sup.reference,
+	.sidebar, .vertical-navbox, .sistersitebox, .mw-tmh-player, sup.reference,
 	.sister-inline-image, .reflist, ol.references, style, link {
 	  display: none !important;
 	}
+	/* IPA respellings are editorial chrome only in the lead's readable respelling and
+	   hatnotes — hide them there, but keep them in running prose so phonology tables
+	   (English phonology, Tone (linguistics)) don't empty out. */
+	.wh-lead .IPA, .wh-lead .ext-phonos, .hatnote .IPA, .hatnote .ext-phonos { display: none !important; }
 	/* Reflowed graphical timeline ({{Nature timeline}} & kin) — a continuous era-coloured
 	   vertical spine with events as dots, life-grade onsets as rings, integer-Gya axis at
 	   left. top/height are inline px (from source em); these own horizontal layout (keyed
@@ -375,5 +382,24 @@ enum ReaderCSS {
 	   (div.noresize, e.g. {{Wide image}}) ship an inline pixel width built for desktop — cap
 	   to the column and scroll horizontally so they stay viewable by panning. */
 	.barbox, div.noresize { max-width: 100%; overflow-x: auto; }
+	/* Music scores ({{Music score}}/LilyPond, div.mw-ext-score): a black-on-transparent
+	   SVG sheet — invisible on the dark reader and shrunk by the global img max-width.
+	   Plate the wrapper like a light drawing (no invert — fine detail), clear the dark
+	   img backdrop, and let the sheet keep its natural width inside the .noresize scroller. */
+	.mw-ext-score { background: #faf6ec; padding: 0.7rem; border-radius: 0.5rem; }
+	.mw-ext-score img { max-width: none; border-radius: 0; background: none; }
+	/* {{Quote box}} (.quotebox): restyle as a centered blockquote — hair left border +
+	   muted tone, capped like a figure. The template's inline border-width:1px thins the
+	   3px hairline (hence !important); the inner blockquote re-adds the generic border
+	   so we clear it. */
+	.quotebox {
+	  float: none; max-width: min(100%, 30rem); margin: 1em auto;
+	  padding-left: 1em; color: var(--faint);
+	  border-left: 3px solid var(--hair-strong) !important;
+	}
+	.quotebox blockquote, .quotebox-quote { margin: 0; padding-left: 0; border-left: 0; }
+	/* Kartographer mapframes (a.mw-kartographer-map) ship an inline min-width (~250-280px)
+	   that outgrows sub-300px columns — allow them to shrink to the column. */
+	a.mw-kartographer-map { min-width: 0 !important; }
 	"""
 }
