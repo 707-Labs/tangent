@@ -66,6 +66,16 @@ enum ReaderCSS {
 	/* Inline data-viz SVGs (graphs, small charts) carry an intrinsic px width that can
 	   exceed the column; cap to the column and scale height to match. */
 	svg { max-width: 100%; height: auto; }
+	/* Math formulae (Parsoid <span class="mwe-math-element">) — SVG fallback images,
+	   black-on-transparent and authored for a light page. The iOS img rule's dark backdrop
+	   + border-radius distort them; re-inline inline math (its inline ex sizing +
+	   vertical-align survive), center/scroll block math like a wide table, and invert the
+	   glyphs (the reader is always dark — no light themes here). */
+	.mwe-math-fallback-image-inline { display: inline; border-radius: 0; background: none; }
+	.mwe-math-element-block { display: block; margin: 0.9em 0; max-width: 100%; overflow-x: auto; }
+	.mwe-math-fallback-image-display { display: block; margin-inline: auto; max-width: none; border-radius: 0; background: none; }
+	.mwe-math-fallback-image-inline,
+	.mwe-math-fallback-image-display { filter: invert(1) hue-rotate(180deg); }
 	video { display: block; margin-inline: auto; }
 	figure { margin: 1.5em auto; max-width: min(100%, 30rem); text-align: center; }
 	figure img, figure video { display: block; margin-inline: auto; }

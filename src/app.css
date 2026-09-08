@@ -539,6 +539,41 @@ body::before {
 	background: #faf6ec;
 	padding: 0.7rem;
 }
+/* Math formulae (Parsoid <span class="mwe-math-element">): each formula arrives as an SVG
+   fallback image, black-on-transparent and authored for a light page. Tailwind's preflight
+   makes every img display:block — dropping inline formulae onto their own line — and the
+   black ink vanishes on dark themes. Inline math returns to the text baseline (its inline
+   ex width/height + vertical-align survive the generic img rule), block math centers and
+   scrolls like a wide table, and dark themes invert the glyphs the way Wikipedia's own dark
+   mode does; the three light themes keep native black. */
+.wiki-content .mwe-math-fallback-image-inline {
+	display: inline;
+	border-radius: 0;
+}
+.wiki-content .mwe-math-element-block {
+	display: block;
+	margin: 0.9em 0;
+	max-width: 100%;
+	overflow-x: auto;
+}
+.wiki-content .mwe-math-fallback-image-display {
+	display: block;
+	margin-inline: auto;
+	max-width: none;
+	border-radius: 0;
+}
+.wiki-content .mwe-math-fallback-image-inline,
+.wiki-content .mwe-math-fallback-image-display {
+	filter: invert(1) hue-rotate(180deg);
+}
+:root[data-theme='daylight'] .wiki-content .mwe-math-fallback-image-inline,
+:root[data-theme='daylight'] .wiki-content .mwe-math-fallback-image-display,
+:root[data-theme='sepia'] .wiki-content .mwe-math-fallback-image-inline,
+:root[data-theme='sepia'] .wiki-content .mwe-math-fallback-image-display,
+:root[data-theme='newsprint'] .wiki-content .mwe-math-fallback-image-inline,
+:root[data-theme='newsprint'] .wiki-content .mwe-math-fallback-image-display {
+	filter: none;
+}
 /* Center thumbnails in the reading column instead of letting them float left/right.
    Parsoid floats figures via mw-halign-* classes; we override those (see below) so
    every figure becomes a centered block. Capped at ~30rem rather than the full column
