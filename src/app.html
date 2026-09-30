@@ -9,26 +9,24 @@
 			No-flash theme: resolve the saved preference (or the OS color-scheme for 'system')
 			and set data-theme + the chrome tint BEFORE first paint, so a light-theme reload
 			never flashes the dark default. The store (theme.svelte.ts) takes over after hydration.
-			The bg map mirrors THEMES[].bg — keep in sync when adding a curated theme.
+			The migration and bg map mirror themes.ts so saved choices match hydration.
 		-->
 		<script>
 			(function () {
 				try {
 					var pref = localStorage.getItem('tangent:theme:v1') || 'system';
+					var retired = { sepia: 'daylight', newsprint: 'daylight', slate: 'nightstand', forest: 'nightstand', wine: 'nightstand' };
+					if (Object.prototype.hasOwnProperty.call(retired, pref)) pref = retired[pref];
+					if (pref !== 'system' && pref !== 'nightstand' && pref !== 'daylight' && pref !== 'high-contrast') pref = 'system';
+					// Hydration uses the same migration; do it before paint too.
 					if (pref === 'system') {
 						pref = matchMedia('(prefers-color-scheme: dark)').matches ? 'nightstand' : 'daylight';
 					}
 					document.documentElement.dataset.theme = pref;
-					// Chrome tint per theme (mirrors THEMES[].bg). An unknown pref harmlessly
-					// renders the @theme default, and the store re-syncs both at hydration.
+					// Chrome tint mirrors THEMES[].bg.
 					var bg = {
 						nightstand: '#15110c',
 						daylight: '#f5efe3',
-						sepia: '#f3e8d2',
-						newsprint: '#e9e7e1',
-						slate: '#15171c',
-						forest: '#0f1410',
-						wine: '#1a1012',
 						'high-contrast': '#000000'
 					};
 					var m = bg[pref] && document.querySelector('meta[name="theme-color"]');
@@ -40,14 +38,14 @@
 		     Google, so no visitor IP is sent to a third party on load. -->
 		<meta
 			name="description"
-			content="Tangent — fall down a Wikipedia rabbit hole. A feed of connected articles that shows how unrelated topics link together."
+			content="Tangent. Fall down a Wikipedia rabbit hole. A feed of connected articles that shows how unrelated topics link together."
 		/>
 		<!-- Social share card. og:image must be an absolute URL — scrapers don't resolve
 		     relative paths or %sveltekit.assets%. Image generated from scripts/og-card.html. -->
 		<meta property="og:type" content="website" />
 		<meta property="og:site_name" content="Tangent" />
 		<meta property="og:url" content="https://tangent.page" />
-		<meta property="og:title" content="Tangent — fall down a Wikipedia rabbit hole" />
+		<meta property="og:title" content="Tangent: fall down a Wikipedia rabbit hole" />
 		<meta
 			property="og:description"
 			content="A feed of connected Wikipedia articles that shows how unrelated topics link together."
@@ -55,9 +53,9 @@
 		<meta property="og:image" content="https://tangent.page/og.png" />
 		<meta property="og:image:width" content="1200" />
 		<meta property="og:image:height" content="630" />
-		<meta property="og:image:alt" content="Tangent — fall down a Wikipedia rabbit hole" />
+		<meta property="og:image:alt" content="Tangent: fall down a Wikipedia rabbit hole" />
 		<meta name="twitter:card" content="summary_large_image" />
-		<meta name="twitter:title" content="Tangent — fall down a Wikipedia rabbit hole" />
+		<meta name="twitter:title" content="Tangent: fall down a Wikipedia rabbit hole" />
 		<meta
 			name="twitter:description"
 			content="A feed of connected Wikipedia articles that shows how unrelated topics link together."

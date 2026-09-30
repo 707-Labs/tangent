@@ -2,6 +2,7 @@
 	import { tick } from 'svelte';
 	import { reader } from '$lib/reader/readerState.svelte';
 	import { articleTitleFromHref } from '$lib/wikipedia/links';
+	import { localArticleAnchor } from '$lib/reader/anchors';
 	import LinkPreview from './LinkPreview.svelte';
 	import { X } from '@lucide/svelte';
 
@@ -56,6 +57,7 @@
 	// Real content imagery — figures, thumbnails, the infobox lead — opens the lightbox;
 	// inline icons, flags, and math glyphs (small, unframed) do not.
 	function isLightboxable(img: HTMLImageElement): boolean {
+		if (img.hasAttribute('usemap') || img.closest('.mwe-math-element')) return false;
 		if (img.closest('figure, .thumb, .thumbinner, .quick-facts')) return true;
 		return img.clientWidth >= 100 && img.clientHeight >= 100;
 	}
@@ -91,7 +93,7 @@
 	// of the cosmetic rewrite below (which can lag a render).
 	//   - Content image → open full-screen (not its Commons file page).
 	//   - Wikipedia article link → dive in-app (left-click) or new-tab tangent (cmd/ctrl).
-	//   - In-page anchor (#section) → default scroll.
+	//   - In-page/current-article anchor → reveal disclosures and scroll locally.
 	//   - Anything else (citations, File:/Category:, off-wiki) → open in a new tab.
 	$effect(() => {
 		const el = contentEl;
@@ -107,12 +109,28 @@
 				return;
 			}
 
-			const anchor = (event.target as HTMLElement | null)?.closest?.('a');
+			const anchor = (event.target as HTMLElement | null)?.closest?.('a, area');
 			if (!anchor) return;
 			const href = anchor.getAttribute('href') ?? '';
-			if (href.startsWith('#')) return;
+			const fragment = localArticleAnchor(href, current ?? '');
+			if (fragment) {
+				let id: string;
+				try {
+					id = decodeURIComponent(fragment.slice(1));
+				} catch {
+					return;
+				}
+				const target = [...el.querySelectorAll('[id]')].find((node) => node.id === id);
+				if (!target) return;
+				event.preventDefault();
+				for (let parent = target.parentElement; parent && parent !== el; parent = parent.parentElement) {
+					if (parent instanceof HTMLDetailsElement) parent.open = true;
+				}
+				target.scrollIntoView({ block: 'start' });
+				return;
+			}
 
-			const title = anchor.dataset.seed ?? articleTitleFromHref(href);
+			const title = anchor.getAttribute('data-seed') ?? articleTitleFromHref(href);
 			event.preventDefault();
 			if (title) {
 				if (event.metaKey || event.ctrlKey) {
@@ -138,7 +156,7 @@
 			if (!contentEl) return;
 			for (const a of contentEl.querySelectorAll('a')) {
 				const href = a.getAttribute('href') ?? '';
-				if (href.startsWith('#')) continue;
+				if (localArticleAnchor(href, current ?? '')) continue;
 				const title = articleTitleFromHref(href);
 				if (title) {
 					a.dataset.seed = title;

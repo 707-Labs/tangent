@@ -32,21 +32,31 @@ Other scripts: `bun run check` (svelte-check), `bun run test` (vitest), `bun run
 
 1. **Seed** — a curated topic, a search result, or "Surprise me" (curated, because
    `list=random` returns mostly obscure stubs).
-2. **Advance** — for the current article, `GET /api/links` returns candidate next
-   steps via the Action API `generator=links` (one call enriches links with image +
-   description). Sparse articles fall back to `morelike:` related pages.
+2. **Advance** — for the current article, `GET /api/links` enriches its lead-section
+   links in reading order. Broad pools reserve up to six slots for `morelike:`
+   related alternatives; sparse articles use an outbound-link/related fallback.
+   Optional related requests have a deadline, so a ready lead pool stays usable.
 3. **Choose** — the pure feed engine (`src/lib/feed/`) scores candidates by relevance
    (overlap with the user's liked-token interest vector), penalizes monotony, only
-   lightly prefers illustrated cards, and fires a **surprise** epsilon for serendipity —
-   front-loaded across the opening cards (after a calm first hop), which also pace
-   hooks ahead of continuity, so a first session shows what the product is early.
+   lightly prefers illustrated cards, and serves **surprise** tangents between
+   coherent runs of a few articles, so the reader can explore a neighborhood
+   before taking another turn. Category affinity ignores generic
+   housekeeping words, and directional labels require supporting metadata.
    Selection is a softmax-weighted pick among the top scorers, not a robotic argmax.
 4. **Render** — the chosen article's full summary extract leads the card as its hook,
    with a breadcrumb explaining the connection and the image demoted to a small inset.
-   The next few cards are prefetched so scrolling stays smooth.
+   Seed and deliberate-dive cards appear as soon as their summaries arrive; optional
+   full-article imagery does not hold them up. The next few cards are prefetched,
+   and concurrent cache misses share one acquisition within a Worker isolate.
 
-Engagement (likes, dwell time, clickthroughs) lives in `localStorage` and feeds the
-interest vector. Tunable knobs live in `src/lib/feed/config.ts`.
+The article reader preserves sources, native media, math, galleries and wide tables.
+See the [renderer coverage matrix](docs/specs/2026-09-30-renderer-audit.md) for the
+22-page corpus, browser checks and remaining limits. Wikipedia's interactive scripts
+are not loaded. [Loading paths](docs/specs/2026-09-29-loading-paths.md) documents the
+request-order changes and their verification; no measured production speedup is claimed.
+
+Engagement (likes, foreground dwell time, clickthroughs) lives in `localStorage`
+and feeds the interest vector. Tunable knobs live in `src/lib/feed/config.ts`.
 
 ### Layout
 

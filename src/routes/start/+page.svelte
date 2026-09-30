@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { onMount } from 'svelte';
 	import type { SearchResult } from '$lib/wikipedia/types';
 	import type { PageProps } from './$types';
 	import { randomSeed, SEED_CATEGORIES } from '$lib/seeds';
-	import BrandMark from '$lib/components/BrandMark.svelte';
 	import RelationIcon from '$lib/components/RelationIcon.svelte';
 	import {
 		Search,
@@ -23,6 +23,20 @@
 	let results = $state<SearchResult[]>([]);
 	let loading = $state(false);
 	let highlighted = $state(-1);
+	let searchError = $state(false);
+	let resultsQuery = $state('');
+	let searchOpen = $state(true);
+	let todayTitles = $state<string[]>([]);
+
+	// Daily picks enrich the surprise pool when ready. Starting a tangent never
+	// waits on that optional upstream request.
+	onMount(() => {
+		void data.today
+			.then((today) => {
+				todayTitles = today.sections.flatMap((section) => section.picks.map((pick) => pick.title));
+			})
+			.catch(() => {});
+	});
 
 	// One icon per mood tile, from the same geometric icon set the rest of the UI uses.
 	const MOOD_ICONS = {
@@ -43,9 +57,11 @@
 		}).format(new Date(`${iso}T00:00:00Z`));
 	}
 
-	// The listbox popup is shown (and the combobox is "expanded") whenever there's
-	// a usable query — including the loading and no-match states, not just hits.
-	const showResults = $derived(query.trim().length >= 2);
+	// Keep loading and no-match states in the popup; Escape and blur dismiss it.
+	const showResults = $derived(searchOpen && query.trim().length >= 2);
+	// A pending response from the previous query must never be selectable or
+	// submitted, including before the debounced effect has run.
+	const currentResults = $derived(resultsQuery === query.trim() ? results : []);
 
 	// Cards and chips render as real links to this URL (middle-click, hover preload);
 	// enter() covers the imperative paths — search submit and "Surprise me".
@@ -60,9 +76,7 @@
 	// "Surprise me" favors today's fresh Main Page picks when they've loaded, so the day's
 	// interesting stuff pops up at the start of a tangent — falling back to the evergreen
 	// curated seeds otherwise (and some of the time regardless, to keep old favorites in play).
-	async function surprise() {
-		const today = await data.today;
-		const todayTitles = today.sections.flatMap((s) => s.picks.map((p) => p.title));
+	function surprise() {
 		if (todayTitles.length > 0 && Math.random() < 0.6) {
 			enter(todayTitles[Math.floor(Math.random() * todayTitles.length)]);
 		} else {
@@ -72,41 +86,54 @@
 
 	function onSubmit(e: SubmitEvent) {
 		e.preventDefault();
-		const top = highlighted >= 0 ? results[highlighted]?.title : results[0]?.title ?? query.trim();
+		const top =
+			(showResults && highlighted >= 0
+				? currentResults[highlighted]?.title
+				: currentResults[0]?.title) ?? query.trim();
 		if (top) enter(top);
 	}
 
 	// Debounced typeahead search.
 	$effect(() => {
 		const q = query.trim();
+		results = [];
+		resultsQuery = '';
+		highlighted = -1;
+		searchError = false;
 		if (q.length < 2) {
-			results = [];
 			loading = false;
 			return;
 		}
-		let ignore = false;
+		const controller = new AbortController();
 		loading = true;
 		const timer = setTimeout(async () => {
 			try {
-				const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
-				const data = (await res.json()) as { results: SearchResult[] };
-				if (!ignore) results = data.results ?? [];
+				const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, {
+					signal: controller.signal
+				});
+				if (!res.ok) throw new Error('Search unavailable');
+				const payload = (await res.json()) as { results: SearchResult[] };
+				if (!controller.signal.aborted) {
+					results = payload.results ?? [];
+					resultsQuery = q;
+				}
 			} catch {
-				if (!ignore) results = [];
+				if (!controller.signal.aborted) searchError = true;
 			} finally {
-				if (!ignore) loading = false;
+				if (!controller.signal.aborted) loading = false;
 			}
 		}, 220);
 		return () => {
-			ignore = true;
+			controller.abort();
 			clearTimeout(timer);
 		};
 	});
 
-	// Reset highlighted when results change.
+	// Keyboard selection stays visible even in a long results popup.
 	$effect(() => {
-		results;
-		highlighted = -1;
+		if (showResults && highlighted >= 0) {
+			document.getElementById(`start-result-${highlighted}`)?.scrollIntoView({ block: 'nearest' });
+		}
 	});
 </script>
 
@@ -114,19 +141,17 @@
 	<title>Start a rabbit hole · Tangent</title>
 </svelte:head>
 
-<div class="flex flex-col items-center pt-8 pb-16 text-center">
-	<div class="mb-3 text-2xl"><BrandMark size={42} /></div>
-	<h1 class="mt-6 font-display text-3xl font-semibold tracking-tight text-ink sm:text-4xl">
+<div class="mx-auto flex w-full min-w-0 flex-col items-center pt-4 pb-12 text-center sm:pt-8">
+	<h1 class="font-display text-3xl font-semibold tracking-tight text-ink sm:text-4xl">
 		Fall down a rabbit hole
 	</h1>
 	<p class="mt-3 max-w-md text-[15px] leading-relaxed text-muted">
-		Pick a starting point. Tangent follows the links from one Wikipedia article to the next —
-		and shows you exactly how you got there.
+		Pick a topic and see where it takes you.
 	</p>
 
 	<form onsubmit={onSubmit} class="relative mt-8 w-full max-w-md">
 		<Search
-			class="absolute top-1/2 left-4 size-5 -translate-y-1/2 text-faint"
+			class="pointer-events-none absolute top-4 left-4 size-5 text-faint"
 			aria-hidden="true"
 		/>
 		<input
@@ -137,17 +162,27 @@
 			autocomplete="off"
 			role="combobox"
 			aria-autocomplete="list"
+			aria-describedby="search-help"
 			aria-expanded={showResults}
 			aria-controls={showResults ? 'search-listbox' : undefined}
-			aria-activedescendant={highlighted >= 0 ? `start-result-${highlighted}` : undefined}
+			aria-activedescendant={showResults && currentResults[highlighted] ? `start-result-${highlighted}` : undefined}
+			onfocus={() => (searchOpen = true)}
+			oninput={() => (searchOpen = true)}
+			onblur={() => {
+				searchOpen = false;
+				highlighted = -1;
+			}}
 			onkeydown={(e) => {
 				if (e.key === 'ArrowDown') {
 					e.preventDefault();
-					highlighted = Math.min(highlighted + 1, results.length - 1);
+					searchOpen = true;
+					highlighted = Math.min(highlighted + 1, currentResults.length - 1);
 				} else if (e.key === 'ArrowUp') {
 					e.preventDefault();
 					highlighted = Math.max(highlighted - 1, -1);
 				} else if (e.key === 'Escape') {
+					e.preventDefault();
+					searchOpen = false;
 					highlighted = -1;
 				}
 			}}
@@ -161,18 +196,21 @@
 				id="search-listbox"
 				role="listbox"
 				class="absolute z-10 mt-2 w-full overflow-hidden rounded-2xl border border-hair
-					bg-surface text-left shadow-card"
+					max-h-80 overflow-y-auto bg-surface text-left shadow-card"
 			>
-				{#if loading && results.length === 0}
-					<li class="px-4 py-3 text-sm text-faint">Searching…</li>
-				{:else if results.length === 0}
-					<li class="px-4 py-3 text-sm text-faint">No matches. Press Enter to try anyway.</li>
+				{#if loading || (resultsQuery !== query.trim() && !searchError)}
+					<li role="presentation" class="px-4 py-3 text-sm text-faint">Searching Wikipedia…</li>
+				{:else if searchError}
+					<li role="presentation" class="px-4 py-3 text-sm text-faint">Search is unavailable. Try again, or pick a topic below.</li>
+				{:else if currentResults.length === 0}
+					<li role="presentation" class="px-4 py-3 text-sm text-faint">No matches. Try another topic, or press Enter to open this title.</li>
 				{:else}
-					{#each results as result, index (result.title)}
-						<li role="option" aria-selected={highlighted === index}>
+					{#each currentResults as result, index (result.title)}
+						<li role="option" id="start-result-{index}" aria-selected={highlighted === index}>
 							<button
 								type="button"
-								id="start-result-{index}"
+								tabindex="-1"
+								onpointerdown={(event) => event.preventDefault()}
 								onclick={() => enter(result.title)}
 								class="flex w-full items-center gap-3 px-4 py-2.5 text-left
 									transition-colors hover:bg-surface-2 {highlighted === index ? 'bg-surface-2' : ''}"
@@ -202,13 +240,17 @@
 				{/if}
 			</ul>
 		{/if}
+		<p id="search-help" class="mt-2 text-xs text-faint">Try a person, place, or idea.</p>
+		<p class="sr-only" role="status" aria-live="polite">
+			{showResults ? loading ? 'Searching Wikipedia' : searchError ? 'Search unavailable' : `${currentResults.length} results` : ''}
+		</p>
 	</form>
 
 	<button
 		type="button"
 		onclick={surprise}
-		class="mt-5 inline-flex items-center gap-2 rounded-full border border-spark/30 bg-spark/5
-			px-4 py-2 text-sm font-medium text-spark transition-all hover:bg-spark/10 active:scale-95"
+		class="mt-5 inline-flex min-h-11 items-center gap-2 rounded-full border border-spark/30 bg-spark/5
+			px-5 py-2 text-sm font-medium text-spark transition-all hover:bg-spark/10 active:scale-95"
 	>
 		<RelationIcon relation="surprise" class="size-4" />
 		Surprise me
@@ -217,8 +259,8 @@
 	<!-- Mood tiles: the categories entry point, promoted to the front door. One tap
 	     dives straight into a curated seed from that subject — starting is the whole
 	     struggle, so a tile launches the run instead of opening another menu. -->
-	<div class="mt-12 w-full text-left">
-		<p class="text-xs font-medium tracking-widest text-faint uppercase">In the mood for</p>
+	<section class="mt-9 w-full text-left" aria-labelledby="moods-heading">
+		<h2 id="moods-heading" class="font-display text-xl font-semibold text-ink">Choose a topic</h2>
 		<div class="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-6">
 			{#each SEED_CATEGORIES as cat (cat.id)}
 				{@const MoodIcon = MOOD_ICONS[cat.id]}
@@ -234,13 +276,12 @@
 				</button>
 			{/each}
 		</div>
-		<p class="mt-2 text-xs text-faint">Tap a mood to dive straight in.</p>
-	</div>
+	</section>
 
 	{#await data.today}
 		<section class="mt-14 w-full text-left" aria-hidden="true">
-			<p class="text-xs font-medium tracking-widest text-faint uppercase">Today on Wikipedia</p>
-			<p class="mt-1 text-sm text-muted">Fresh from the front page — updated every day.</p>
+			<h2 class="font-display text-xl font-semibold text-ink">Today on Wikipedia</h2>
+			<p class="mt-1 text-sm text-muted">From the front page. Updated daily.</p>
 
 			<div class="mt-6 flex flex-col gap-8">
 				<!-- First block mirrors the "On this day" timeline rows, second the DYK
@@ -268,17 +309,17 @@
 	{:then today}
 		{#if today.sections.length > 0}
 			<section class="mt-14 w-full text-left">
-				<p class="text-xs font-medium tracking-widest text-faint uppercase">Today on Wikipedia</p>
-				<p class="mt-1 text-sm text-muted">Fresh from the front page — updated every day.</p>
+				<h2 class="font-display text-xl font-semibold text-ink">Today on Wikipedia</h2>
+				<p class="mt-1 text-sm text-muted">From the front page. Updated daily.</p>
 
 				<div class="mt-6 flex flex-col gap-8">
 					{#each today.sections as section (section.id)}
 						<div>
-							<h2 class="mb-3 text-sm font-semibold text-ink">
+							<h3 class="mb-3 text-sm font-semibold text-ink">
 								{section.id === 'onthisday'
 									? `${section.label} · ${prettyDate(today.date)}`
 									: section.label}
-							</h2>
+							</h3>
 							{#if section.id === 'onthisday'}
 								<!-- Timeline list, not a card shelf: the event sentence IS the hook, so
 								     it gets the full line — and every row is a ready-made tangent launch
@@ -414,7 +455,7 @@
 	{/await}
 
 	<div class="mt-12 w-full">
-		<p class="mb-4 text-xs font-medium tracking-widest text-faint uppercase">Or pick a seed</p>
+		<h2 class="mb-4 font-display text-xl font-semibold text-ink">More places to start</h2>
 
 		<div class="flex flex-wrap justify-center gap-2">
 			{#each data.seeds as seed (seed.title)}

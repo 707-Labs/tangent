@@ -82,122 +82,6 @@ html {
 	--shadow-card: 0 8px 24px -16px rgba(60, 45, 20, 0.3);
 }
 
-/* "Sepia" — warmer and book-ier than Daylight: tan parchment, sepia-brown ink, burnt
-   sienna accent. A light theme. (AA floor across text tokens: faint/accent ~4.8:1.) */
-:root[data-theme='sepia'] {
-	color-scheme: light;
-
-	--color-void: #f3e8d2;
-	--color-surface: #f8efdc;
-	--color-surface-2: #e6d7b8;
-	--color-hair: #d9c8a4;
-	--color-hair-strong: #c4ae84;
-
-	--color-ink: #3a2c18;
-	--color-muted: #6f5a38;
-	--color-faint: #75603b;
-	--color-read: #43331d;
-
-	--color-accent: #9a5212;
-	--color-accent-soft: #824510;
-	--color-spark: #3f6f4a;
-	--color-like: #b23a1f;
-	--color-danger: #a82318;
-
-	--shadow-card: 0 8px 24px -16px rgba(70, 50, 20, 0.32);
-}
-
-/* "Newsprint" — the cool, neutral light: a crisp gray-white page (not the warm paper of
-   Daylight/Sepia), near-black ink, the brand ember darkened to a coffee brown so it still
-   carries on a cool sheet. AA floor across text tokens: accent 5.3:1 on void (4.67:1
-   worst-case on the slightly darker surface-2). A light theme. */
-:root[data-theme='newsprint'] {
-	color-scheme: light;
-
-	--color-void: #e9e7e1;
-	--color-surface: #f3f2ed;
-	--color-surface-2: #dcdad2;
-	--color-hair: #d0cdc3;
-	--color-hair-strong: #b6b2a6;
-
-	--color-ink: #20222a;
-	--color-muted: #4f5157;
-	--color-faint: #595b61;
-	--color-read: #2f313a;
-
-	--color-accent: #855213;
-	--color-accent-soft: #6f4410;
-	--color-spark: #3d6a52;
-	--color-like: #bb3b27;
-	--color-danger: #b3261e;
-
-	--shadow-card: 0 8px 24px -16px rgba(40, 42, 50, 0.26);
-}
-
-/* "Slate" — cool neutral dark (blue-grey), with a warm brass accent kept from the brand
-   ember family so it still pops. Dark themes inherit the @theme dark shadow + color-scheme. */
-:root[data-theme='slate'] {
-	--color-void: #15171c;
-	--color-surface: #1d2027;
-	--color-surface-2: #272b34;
-	--color-hair: #323844;
-	--color-hair-strong: #444b59;
-
-	--color-ink: #e6e9ef;
-	--color-muted: #a0a7b4;
-	--color-faint: #8f97a5;
-	--color-read: #c3c9d4;
-
-	--color-accent: #d8a548;
-	--color-accent-soft: #bf8f38;
-	--color-spark: #7fb39c;
-	--color-like: #e0644a;
-	--color-danger: #f3766b;
-}
-
-/* "Forest" — deep green-black, sage-forward, warm gold accent. A dark theme. */
-:root[data-theme='forest'] {
-	--color-void: #0f1410;
-	--color-surface: #16201a;
-	--color-surface-2: #1f2c23;
-	--color-hair: #283a2e;
-	--color-hair-strong: #3a5141;
-
-	--color-ink: #e4ecdf;
-	--color-muted: #9fb0a0;
-	--color-faint: #90a292;
-	--color-read: #c6d4c2;
-
-	--color-accent: #d2a458;
-	--color-accent-soft: #b88e44;
-	--color-spark: #7cc0a0;
-	--color-like: #e2674c;
-	--color-danger: #f3766b;
-}
-
-/* "Wine" — deep oxblood dark: a warm claret-black page, rose-tinted ink, a gold accent (warm
-   red, never purple). The moodiest of the set; the "like" red is brightened to a coral so the
-   heart still reads against the wine ground. All text tokens clear AA comfortably (faint 5.9:1,
-   accent 6.6:1 worst-case). A dark theme. */
-:root[data-theme='wine'] {
-	--color-void: #1a1012;
-	--color-surface: #241619;
-	--color-surface-2: #2f1d21;
-	--color-hair: #3d262b;
-	--color-hair-strong: #553740;
-
-	--color-ink: #f0e2e0;
-	--color-muted: #c2a3a6;
-	--color-faint: #b39699;
-	--color-read: #ddc8c8;
-
-	--color-accent: #d99a5a;
-	--color-accent-soft: #c2884a;
-	--color-spark: #7cb39a;
-	--color-like: #ef7a63;
-	--color-danger: #f3766b;
-}
-
 /* "High Contrast" — accessibility-first: pure black, pure white, bright amber. A dark theme.
    Every text token clears WCAG AAA (7:1+), and borders are deliberately brighter than other
    dark themes so structure stays visible. */
@@ -555,7 +439,7 @@ body::before {
    black ink vanishes on dark themes. Inline math returns to the text baseline (its inline
    ex width/height + vertical-align survive the generic img rule), block math centers and
    scrolls like a wide table, and dark themes invert the glyphs the way Wikipedia's own dark
-   mode does; the three light themes keep native black. */
+   mode does; Light keeps native black. */
 .wiki-content .mwe-math-fallback-image-inline {
 	display: inline;
 	border-radius: 0;
@@ -577,11 +461,7 @@ body::before {
 	filter: invert(1) hue-rotate(180deg);
 }
 :root[data-theme='daylight'] .wiki-content .mwe-math-fallback-image-inline,
-:root[data-theme='daylight'] .wiki-content .mwe-math-fallback-image-display,
-:root[data-theme='sepia'] .wiki-content .mwe-math-fallback-image-inline,
-:root[data-theme='sepia'] .wiki-content .mwe-math-fallback-image-display,
-:root[data-theme='newsprint'] .wiki-content .mwe-math-fallback-image-inline,
-:root[data-theme='newsprint'] .wiki-content .mwe-math-fallback-image-display {
+:root[data-theme='daylight'] .wiki-content .mwe-math-fallback-image-display {
 	filter: none;
 }
 /* Center thumbnails in the reading column instead of letting them float left/right.
@@ -780,10 +660,8 @@ body::before {
 	gap: 0.75rem;
 	padding: 1rem 1.25rem;
 	font-family: var(--font-body);
-	font-size: 0.6875rem;
+	font-size: 0.8125rem;
 	font-weight: 600;
-	letter-spacing: 0.14em;
-	text-transform: uppercase;
 	color: var(--color-muted);
 	transition: color 0.12s ease;
 }
@@ -898,16 +776,13 @@ body::before {
  * sidebar/infobox/citation furniture that linearizes into a wall of navigation and
  * footnote noise in our single dark column (the lavender "sidebar-heading" bars, the
  * "Part of a series on…" link lists, and the [1][2] markers peppered through the prose).
- * `.nomobile` is Wikipedia's own "too wide for a phone" flag — graphical timelines
- * ({{Nature timeline}} and kin) are absolutely-positioned, fixed-em-width graphics. The
- * ones we recognize are reflowed to `.wh-tl` server-side (wikipedia/timeline.ts); this
- * rule just nets any nomobile graphic we couldn't parse, so it never blows out the
- * column. `.navbar` is the template "view·talk·edit" / "v·t·e" edit chrome — reader noise.
+ * Recognized graphical timelines are reflowed to `.wh-tl` server-side. Unrecognized
+ * `.nomobile` graphics stay available in a bounded scroller (below), while navigation
+ * wrappers remain hidden independently. `.navbar` is template edit chrome.
  */
 .wiki-content .mw-editsection,
 .wiki-content .shortdescription,
 .wiki-content .noprint,
-.wiki-content .nomobile,
 .wiki-content .navbar,
 .wiki-content .navbox,
 .wiki-content .navbox-styles,
@@ -919,11 +794,7 @@ body::before {
 .wiki-content .sidebar,
 .wiki-content .vertical-navbox,
 .wiki-content .sistersitebox,
-.wiki-content .mw-tmh-player,
-.wiki-content sup.reference,
 .wiki-content .sister-inline-image,
-.wiki-content .reflist,
-.wiki-content ol.references,
 .wiki-content style,
 .wiki-content link {
 	display: none !important;
@@ -970,8 +841,6 @@ body::before {
 	font-family: var(--font-body);
 	font-size: 0.75rem;
 	font-weight: 700;
-	letter-spacing: 0.09em;
-	text-transform: uppercase;
 	color: var(--color-accent);
 	padding: 0.85rem 1rem 0.15rem;
 }
@@ -1034,8 +903,6 @@ body::before {
 	font-family: var(--font-body);
 	font-size: 0.5625rem;
 	font-weight: 700;
-	letter-spacing: 0.05em;
-	text-transform: uppercase;
 	text-align: center;
 	color: var(--color-faint);
 	opacity: 0.9;
@@ -1092,8 +959,6 @@ body::before {
 	font-family: var(--font-body);
 	font-size: 0.7rem;
 	font-weight: 700;
-	letter-spacing: 0.05em;
-	text-transform: uppercase;
 	color: var(--color-muted);
 }
 /*
@@ -1605,4 +1470,93 @@ body::before {
    that outgrows sub-300px columns — allow them to shrink to the column. */
 .wiki-content a.mw-kartographer-map {
 	min-width: 0 !important;
+}
+
+/* Listen boxes contain real article recordings despite Wikipedia's print-only flag. */
+.wiki-content .listen.noprint,
+.wiki-content .mw-tmh-player {
+	/* The generic noprint rule is important; actual media needs a narrow override. */
+	display: block !important;
+	float: none;
+	max-width: 100%;
+	margin: 1em auto;
+}
+.wiki-content audio {
+	display: block;
+	max-width: 100%;
+	margin: 0.75em auto;
+}
+.wiki-content .wh-imagemap {
+	display: block;
+	/* Small maps keep a compact paper plate; wider maps clamp and scroll locally. */
+	width: fit-content;
+	max-width: 100%;
+	min-width: 0;
+	margin-inline: auto;
+	overflow-x: auto;
+}
+.wiki-content .wh-imagemap:has(img[data-file-type='drawing']) {
+	background: #faf6ec;
+}
+.wiki-content .wh-imagemap img[usemap] {
+	/* Map coordinates describe content pixels. Drawing padding and figure borders
+	   must not consume the authored width under Tailwind's border-box reset. */
+	max-width: none !important;
+	padding: 0 !important;
+	border: 0 !important;
+	box-sizing: content-box;
+	background: transparent;
+	border-radius: 0;
+	box-shadow: none;
+	cursor: default;
+}
+.wiki-content .wh-sources {
+	margin: 1em 0;
+	padding: 0.75em 1em;
+	border: 1px solid var(--color-hair);
+	border-radius: 0.5rem;
+	font-size: 0.85rem;
+}
+.wiki-content .wh-sources > summary {
+	cursor: pointer;
+	color: var(--color-ink);
+	font-family: var(--font-sans);
+}
+.wiki-content .wh-sources :is(.reflist, .mw-references-wrap) {
+	column-count: 1 !important;
+	column-width: auto !important;
+}
+.wiki-content dl {
+	margin: 0.9em 0;
+}
+.wiki-content dt {
+	font-weight: 600;
+}
+.wiki-content dd {
+	margin-inline-start: 1.5em;
+}
+
+/* Keep the semantic MathML tree available to assistive technology. Parsoid marks
+   fallback images aria-hidden, so display:none on this tree leaves no spoken math. */
+.wiki-content .mwe-math-mathml-a11y {
+	display: block !important;
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+
+/* Wikipedia's nomobile flag can mark real graphics, not only navigation chrome.
+   Keep unknown graphics accessible without widening the reader. Classes such as
+   navbox/sidebar/shortdescription still hide their own content independently. */
+.wiki-content .nomobile {
+	float: none !important;
+	max-width: 100% !important;
+	min-width: 0 !important;
+	overflow-x: auto !important;
+	margin-inline: auto;
 }

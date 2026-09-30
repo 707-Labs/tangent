@@ -125,8 +125,7 @@
 	}
 </script>
 
-<div class="border-t border-hair pt-3">
-	<p class="mb-2 text-xs font-medium tracking-wide text-faint uppercase">Account</p>
+<div>
 
 	{#if auth.isAuthed && auth.user}
 		<div class="flex items-center justify-between gap-2">
@@ -143,7 +142,7 @@
 			<button
 				type="button"
 				onclick={() => auth.logout()}
-				class="shrink-0 rounded-full border border-hair px-3 py-1.5 text-xs font-medium
+				class="min-h-11 shrink-0 rounded-full border border-hair px-3 py-1.5 text-xs font-medium
 					text-muted transition-colors hover:border-hair-strong hover:text-ink"
 			>
 				Sign out
@@ -164,7 +163,7 @@
 					type="button"
 					onclick={addPasskey}
 					disabled={pkBusy}
-					class="inline-flex shrink-0 min-h-9 items-center gap-1.5 rounded-full border border-hair
+					class="inline-flex shrink-0 min-h-11 items-center gap-1.5 rounded-full border border-hair
 						px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:border-accent/50
 						hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
 				>
@@ -194,7 +193,7 @@
 										type="button"
 										onclick={() => removePasskey(pk.id)}
 										disabled={removingId === pk.id}
-										class="inline-flex min-h-8 items-center gap-1 rounded-full bg-danger/10 px-2.5 py-1
+										class="inline-flex min-h-11 items-center gap-1 rounded-full bg-danger/10 px-2.5 py-1
 											text-xs font-medium text-danger transition-colors hover:bg-danger/20
 											disabled:cursor-not-allowed disabled:opacity-50"
 									>
@@ -205,7 +204,7 @@
 										type="button"
 										onclick={() => (pendingRemoveId = null)}
 										disabled={removingId === pk.id}
-										class="min-h-8 rounded-full px-2 py-1 text-xs font-medium text-faint
+										class="min-h-11 rounded-full px-2 py-1 text-xs font-medium text-faint
 											transition-colors hover:text-muted disabled:opacity-50"
 									>
 										Cancel
@@ -225,7 +224,7 @@
 					{/each}
 				</ul>
 				<p class="mt-1.5 text-xs text-faint">
-					Removing a passkey is safe — you can still sign in with an email code.
+					You can still sign in with an email code after removing a passkey.
 				</p>
 			{/if}
 		{/if}
@@ -241,7 +240,7 @@
 						type="button"
 						onclick={deleteAccount}
 						disabled={deleting}
-						class="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-danger/10 px-3 py-1.5
+						class="inline-flex min-h-11 items-center gap-1.5 rounded-full bg-danger/10 px-3 py-1.5
 							text-xs font-medium text-danger transition-colors hover:bg-danger/20
 							disabled:cursor-not-allowed disabled:opacity-50"
 					>
@@ -255,7 +254,7 @@
 						type="button"
 						onclick={() => (confirmDelete = false)}
 						disabled={deleting}
-						class="min-h-9 rounded-full border border-hair px-3 py-1.5 text-xs font-medium
+						class="min-h-11 rounded-full border border-hair px-3 py-1.5 text-xs font-medium
 							text-muted transition-colors hover:border-hair-strong hover:text-ink
 							disabled:opacity-50"
 					>
@@ -269,7 +268,7 @@
 						confirmDelete = true;
 						error = null;
 					}}
-					class="text-xs font-medium text-faint transition-colors hover:text-danger"
+					class="min-h-11 text-xs font-medium text-faint transition-colors hover:text-danger"
 				>
 					Delete account
 				</button>
@@ -285,14 +284,14 @@
 				autocomplete="email"
 				placeholder="you@example.com"
 				aria-label="Email"
-				class="min-h-9 rounded-lg border border-hair bg-surface-2 px-3 py-1.5 text-sm text-ink
+				class="min-h-11 rounded-lg border border-hair bg-surface-2 px-3 py-1.5 text-sm text-ink
 					placeholder:text-faint focus:border-accent/60 focus:outline-none"
 			/>
 			<button
 				type="submit"
 				disabled={busy || !email.trim()}
-				class="inline-flex min-h-9 items-center justify-center gap-2 rounded-full bg-accent/10 px-3 py-1.5
-					text-xs font-medium text-accent transition-colors hover:bg-accent/20
+				class="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-accent px-3 py-1.5
+					text-sm font-medium text-void transition-colors hover:bg-accent/90
 					disabled:cursor-not-allowed disabled:opacity-50"
 			>
 				{#if busy}<LoaderCircle class="size-3.5 animate-spin" aria-hidden="true" />{/if}
@@ -309,7 +308,7 @@
 				type="button"
 				onclick={signInWithPasskey}
 				disabled={pkBusy}
-				class="inline-flex min-h-9 w-full items-center justify-center gap-2 rounded-full border
+				class="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full border
 					border-hair px-3 py-1.5 text-xs font-medium text-muted transition-colors
 					hover:border-accent/50 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
 			>
@@ -336,7 +335,7 @@
 				maxlength="6"
 				placeholder="000000"
 				aria-label="6-digit code"
-				class="min-h-9 rounded-lg border border-hair bg-surface-2 px-3 py-1.5 text-center text-base
+				class="min-h-11 rounded-lg border border-hair bg-surface-2 px-3 py-1.5 text-center text-base
 					tracking-[0.4em] text-ink placeholder:text-faint focus:border-accent/60 focus:outline-none"
 			/>
 			{#if devCode}
@@ -346,7 +345,7 @@
 				<button
 					type="submit"
 					disabled={busy || code.trim().length !== 6}
-					class="inline-flex min-h-9 flex-1 items-center justify-center gap-2 rounded-full bg-accent/10
+					class="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-full bg-accent/10
 						px-3 py-1.5 text-xs font-medium text-accent transition-colors hover:bg-accent/20
 						disabled:cursor-not-allowed disabled:opacity-50"
 				>
@@ -356,7 +355,7 @@
 				<button
 					type="button"
 					onclick={restart}
-					class="min-h-9 rounded-full border border-hair px-3 py-1.5 text-xs font-medium
+					class="min-h-11 rounded-full border border-hair px-3 py-1.5 text-xs font-medium
 						text-muted transition-colors hover:border-hair-strong hover:text-ink"
 				>
 					Back

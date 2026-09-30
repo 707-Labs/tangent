@@ -15,12 +15,17 @@ import { cached, TTL } from './cache';
  *
  * Throws on upstream network failure (so callers can return a retryable error);
  * returns `{ article: null }` only when the page genuinely doesn't exist.
+ * `leadImage: false` keeps seed/dive navigation to one summary acquisition, retaining
+ * its existing thumbnail while skipping optional full-article image extraction.
  */
-export async function resolveCard(title: string): Promise<{ article: Article | null; degraded: boolean }> {
+export async function resolveCard(
+	title: string,
+	options: { leadImage?: boolean } = {}
+): Promise<{ article: Article | null; degraded: boolean }> {
 	let article = await cached(`card:${title}`, TTL.long, () => fetchArticle(title));
 
 	let degraded = false;
-	if (article && !article.thumbnail) {
+	if (options.leadImage !== false && article && !article.thumbnail) {
 		try {
 			const thumbnail = await cached(`leadimg:${article.title}`, TTL.long, async () => {
 				const html = await cached(`article:${article!.title}`, TTL.long, () =>

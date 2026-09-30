@@ -284,7 +284,7 @@
 			if (data.error) {
 				error = 'Wikipedia is being slow.';
 			} else if (filtered.length === 0) {
-				error = 'No links surfaced here — pull a different thread.';
+				error = 'No links found. Try another article.';
 			} else {
 				placeChildren(key, filtered);
 			}
@@ -546,19 +546,18 @@
 
 <div class="relative left-1/2 w-screen -translate-x-1/2">
 	<header class="mx-auto max-w-3xl px-4 text-center">
-		<p class="text-xs font-medium tracking-widest text-faint uppercase">Playground</p>
-		<h1 class="mt-2 font-display text-2xl font-semibold tracking-tight text-ink">
-			The knowledge canvas
+		<h1 class="font-display text-2xl font-semibold tracking-tight text-ink">
+			Explore the map
 		</h1>
 		<p class="mx-auto mt-2 max-w-md text-sm leading-relaxed text-muted">
-			Tap a node to chart its connections — the map grows as you go. Drag or scroll to pan,
+			Choose an article to see its connections. Drag or scroll to pan,
 			pinch or <kbd class="rounded border border-hair bg-surface px-1 text-[11px]">⌘</kbd>+scroll
 			to zoom.
 		</p>
 
 		{#if ladder.length > 0}
 			<div class="mt-4 flex flex-wrap items-center justify-center gap-2">
-				<span class="text-xs font-medium tracking-widest text-faint uppercase">Zoom out</span>
+				<span class="text-xs font-medium text-faint">Zoom out</span>
 				{#each ladder as rung (rung)}
 					<button
 						type="button"
@@ -581,7 +580,7 @@
 		bind:clientWidth={stageW}
 		bind:clientHeight={stageH}
 		role="application"
-		aria-label="Knowledge canvas — drag to pan, buttons below to zoom"
+		aria-label="Article map. Drag to pan, use the buttons below to zoom"
 		class="relative mt-2 touch-none overflow-hidden select-none
 			{panning ? 'cursor-grabbing' : 'cursor-grab'}"
 		style="height: calc(100dvh - 19rem); min-height: 460px"
@@ -613,8 +612,8 @@
 					{@const pos = polarFrom(focusNode.x, focusNode.y, s.mid, RADIUS * 1.7)}
 					<span
 						class="node-label absolute -translate-x-1/2 -translate-y-1/2 rounded-full
-							bg-void/70 px-1.5 text-[11px] font-medium tracking-[0.14em]
-							whitespace-nowrap uppercase
+							bg-void/70 px-1.5 text-[11px] font-medium
+							whitespace-nowrap
 							{s.id === 'wild' ? 'text-spark' : 'text-faint'}"
 						style="left: {pos.x}px; top: {pos.y}px"
 						transition:fade={{ duration: 250 }}
@@ -732,7 +731,7 @@
 	<footer class="mx-auto max-w-3xl px-4 pb-4">
 		{#if visited.length > 0}
 			<div class="flex items-center gap-2">
-				<span class="shrink-0 text-xs font-medium tracking-widest text-faint uppercase">Trail</span>
+				<span class="shrink-0 text-xs font-medium text-faint">Trail</span>
 				<div class="no-scrollbar flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
 					{#each visited as title, i (`${i}:${title}`)}
 						{#if i > 0}

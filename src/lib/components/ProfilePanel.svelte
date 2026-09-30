@@ -6,10 +6,10 @@
 	import { TASTE_OPTIONS } from '$lib/feed/taste';
 	import { Atom, Cpu, Landmark, Leaf, Palette, Shuffle, Sparkles, Users } from '@lucide/svelte';
 	import Drawer from './Drawer.svelte';
-	import AccountSection from './AccountSection.svelte';
+	import { auth } from '$lib/auth/authState.svelte';
 	import ThemePicker from './ThemePicker.svelte';
 
-	let { onClose }: { onClose: () => void } = $props();
+	let { onClose, onAccount }: { onClose: () => void; onAccount?: () => void } = $props();
 
 	const tasteIcons = {
 		balanced: Shuffle,
@@ -42,76 +42,91 @@
 	}
 </script>
 
-<Drawer title="Your interests" closeLabel="Close interests" {onClose}>
+<Drawer title="Settings" closeLabel="Close settings" {onClose}>
 	{#snippet children(close)}
 		<div class="p-4">
-			<p class="mb-3 text-xs font-medium tracking-wide text-faint uppercase">Appearance</p>
-			<ThemePicker />
+			{#if onAccount}
+				<section aria-label="Account" class="mb-5 border-b border-hair pb-4">
+					<p class="mb-2 text-sm text-muted">{auth.isAuthed ? 'Manage your account and sync.' : 'Sign in to sync your interests across devices.'}</p>
+					<button type="button" onclick={() => { close(); onAccount?.(); }}
+						class="min-h-11 w-full rounded-full bg-accent px-3 py-2 text-sm font-medium text-void transition-colors hover:bg-accent/90">
+						{auth.isAuthed ? 'Account' : 'Sign in'}
+					</button>
+				</section>
+			{/if}
+			<fieldset class="min-w-0">
+				<legend class="mb-3 text-sm font-medium text-muted">Appearance</legend>
+				<ThemePicker />
+			</fieldset>
 
-			<p class="mb-3 mt-5 text-xs font-medium tracking-wide text-faint uppercase">Tangent flavor</p>
-			<div class="grid grid-cols-2 gap-2">
-				{#each TASTE_OPTIONS as option}
-					{@const Icon = tasteIcons[option.id]}
+			<fieldset class="mt-5 min-w-0">
+				<legend class="mb-3 text-sm font-medium text-muted">Tangent flavor</legend>
+				<div class="grid grid-cols-2 gap-2">
+					{#each TASTE_OPTIONS as option}
+						{@const Icon = tasteIcons[option.id]}
+						<button
+							type="button"
+							onclick={() => setTaste(option.id)}
+							aria-pressed={profile.taste === option.id}
+							title={option.description}
+							class="inline-flex min-h-11 min-w-0 items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left
+								text-xs font-medium transition-colors
+								{profile.taste === option.id
+								? 'border-accent/60 bg-accent/10 text-accent'
+								: 'border-hair text-muted hover:border-hair-strong hover:text-ink'}"
+						>
+							<Icon class="size-3.5 shrink-0" aria-hidden="true" />
+							<span class="min-w-0 truncate">{option.label}</span>
+						</button>
+					{/each}
+				</div>
+			</fieldset>
+
+			<section aria-label="Learned interests">
+				{#if hasWeights}
+					<h3 class="mb-3 mt-5 text-sm font-medium text-muted">Top interests</h3>
+					<ul class="space-y-2">
+						{#each topTokens as { token, effective }}
+							<li class="flex items-center justify-between gap-2">
+								<span class="min-w-0 truncate text-sm text-ink capitalize">{token}</span>
+								<!-- Decorative weight bar; the ranked list conveys the interests. -->
+								<div aria-hidden="true" class="h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-surface-2">
+									<div
+										class="h-full rounded-full bg-accent"
+										style="width: {Math.min(100, (effective / 3) * 100).toFixed(1)}%"
+									></div>
+								</div>
+							</li>
+						{/each}
+					</ul>
+
+					{#if profile.likedTitles.length > 0}
+						<p class="mt-3 text-xs text-faint">
+							{profile.likedTitles.length} liked article{profile.likedTitles.length === 1 ? '' : 's'}
+						</p>
+					{/if}
+
 					<button
 						type="button"
-						onclick={() => setTaste(option.id)}
-						aria-pressed={profile.taste === option.id}
-						title={option.description}
-						class="inline-flex min-h-9 min-w-0 items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left
-							text-xs font-medium transition-colors
-							{profile.taste === option.id
-							? 'border-accent/60 bg-accent/10 text-accent'
-							: 'border-hair text-muted hover:border-hair-strong hover:text-ink'}"
+						onclick={() => {
+							profile.reset();
+							feed.retune();
+							close();
+						}}
+						class="mt-4 min-h-11 w-full rounded-full border border-hair py-1.5 text-xs font-medium
+							text-muted transition-colors hover:border-hair-strong hover:text-ink"
 					>
-						<Icon class="size-3.5 shrink-0" aria-hidden="true" />
-						<span class="min-w-0 truncate">{option.label}</span>
+						Reset personalization
 					</button>
-				{/each}
-			</div>
-
-			{#if hasWeights}
-				<p class="mb-3 mt-5 text-xs font-medium tracking-wide text-faint uppercase">Top interests</p>
-				<ul class="space-y-2">
-					{#each topTokens as { token, effective }}
-						<li class="flex items-center justify-between gap-2">
-							<span class="min-w-0 truncate text-sm text-ink capitalize">{token}</span>
-							<!-- Visual weight bar -->
-							<div class="h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-surface-2">
-								<div
-									class="h-full rounded-full bg-accent"
-									style="width: {Math.min(100, (effective / 3) * 100).toFixed(1)}%"
-								></div>
-							</div>
-						</li>
-					{/each}
-				</ul>
-
-				{#if profile.likedTitles.length > 0}
-					<p class="mt-3 text-xs text-faint">
-						{profile.likedTitles.length} liked article{profile.likedTitles.length === 1 ? '' : 's'}
-					</p>
+				{:else}
+					<p class="mt-5 text-sm text-faint">Like or read articles to tune your feed.</p>
 				{/if}
+			</section>
 
-				<button
-					type="button"
-					onclick={() => {
-						profile.reset();
-						feed.retune();
-						close();
-					}}
-					class="mt-4 w-full rounded-full border border-hair py-1.5 text-xs font-medium
-						text-muted transition-colors hover:border-hair-strong hover:text-ink"
-				>
-					Reset personalization
-				</button>
-			{:else}
-				<p class="mt-5 text-sm text-faint">Like or read articles to tune your feed.</p>
-			{/if}
-
-			<!-- Account: sign in to sync the interest vector across devices. -->
-			<div class="mt-4">
-				<AccountSection />
-			</div>
+			<a href="/graph" onclick={() => close()}
+				class="mt-4 inline-flex min-h-11 items-center text-sm text-muted transition-colors hover:text-ink">
+				Explore the map
+			</a>
 
 			<!-- Reachable entry to the legal/about surface from the feed itself, since the
 			     page footer sits below an infinite scroll. -->

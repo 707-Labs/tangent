@@ -147,6 +147,25 @@ describe('classifyDirection', () => {
 			expect(classifyDirection(c, { runEras, runPlaces, runCategories })).toBeNull();
 		});
 
+		it('returns null when era matches but the run has no known place to contrast', () => {
+			const c = candidate('Mexico City earthquake', 'Earthquake in Mexico in 1985');
+			expect(classifyDirection(c, {
+				runEras, runPlaces: new Set(), runCategories
+			})).toBeNull();
+		});
+
+		it('returns null when place matches but the run has no known era to contrast', () => {
+			const c = candidate('Argentine Confederation', '1831 predecessor state of Argentina');
+			expect(classifyDirection(c, {
+				runEras: new Set(), runPlaces, runCategories
+			})).toBeNull();
+		});
+
+		it('returns null when place matches but the candidate has no known era', () => {
+			const c = candidate('Patagonia', 'Region in Argentina');
+			expect(classifyDirection(c, { runEras, runPlaces, runCategories })).toBeNull();
+		});
+
 		it('returns null when both era and place are shared (neighborhood, not tangent)', () => {
 			const c = candidate('Battle of Goose Green', '1982 Falklands War battle', [
 				'Category:Battles of the Falklands War',

@@ -19,9 +19,8 @@
 	<header class="space-y-3">
 		<h1 class="text-3xl font-semibold tracking-tight text-ink sm:text-4xl">About Tangent</h1>
 		<p class="text-lg leading-relaxed text-muted">
-			Tangent turns Wikipedia into something you fall through. Pick a starting article and it
-			follows the links outward — surfacing connected topics and showing, at every step, exactly
-			how you got from one to the next.
+			Tangent connects Wikipedia articles as you read. Pick a starting point, then follow
+			the links to another topic. Each article shows how you got there.
 		</p>
 		<p class="leading-relaxed text-muted">
 			It's a reading toy, not a destination: no feed to clear, no streak to keep. Wander until
@@ -30,7 +29,7 @@
 	</header>
 
 	<section class="space-y-3">
-		<h2 class="text-sm font-semibold tracking-widest text-faint uppercase">
+		<h2 class="text-sm font-semibold text-ink">
 			Where the writing comes from
 		</h2>
 		<p class="leading-relaxed text-muted">
@@ -55,7 +54,7 @@
 				target="_blank"
 				rel="noopener noreferrer"
 				class={linkClass}>Wikimedia Commons</a
-			> under their own individual licenses — open any image on Wikipedia for its specific terms.
+			> under their own individual licenses. Open any image on Wikipedia for its specific terms.
 		</p>
 		<p class="leading-relaxed text-muted">
 			Tangent is an independent project. It is not affiliated with, endorsed by, or sponsored by
@@ -64,15 +63,15 @@
 	</section>
 
 	<section class="space-y-3">
-		<h2 class="text-sm font-semibold tracking-widest text-faint uppercase">Accounts &amp; privacy</h2>
+		<h2 class="text-sm font-semibold text-ink">Accounts &amp; privacy</h2>
 		<p class="leading-relaxed text-muted">
-			Tangent works fully without an account — the interests that tune your feed and the trail you
+			Tangent works fully without an account. The interests that tune your feed and the trail you
 			leave live in your browser by default, and you can wipe them anytime from the interests panel.
 			There are no ads and no tracking cookies; any usage Tangent measures is anonymous and
 			aggregate, never tied to you.
 		</p>
 		<p class="leading-relaxed text-muted">
-			Signing in is optional. If you do — with an email link, a one-time code, or a passkey — Tangent
+			Signing in is optional. When you sign in with an email link, a one-time code, or a passkey, Tangent
 			stores your email, a synced copy of that interests list, and any passkeys you add, so your feed
 			can follow you across devices. Deleting your account erases all of it. The specifics are in the
 			<a href="/terms" class={linkClass}>Terms &amp; Privacy</a>.
@@ -80,7 +79,7 @@
 	</section>
 
 	<section class="space-y-3">
-		<h2 class="text-sm font-semibold tracking-widest text-faint uppercase">The fine print</h2>
+		<h2 class="text-sm font-semibold text-ink">The fine print</h2>
 		<p class="leading-relaxed text-muted">
 			Tangent is free and provided as-is, with no warranty of any kind. Article content reflects
 			Wikipedia at the moment you load it; its accuracy, completeness, and tone are Wikipedia's, not
@@ -90,7 +89,7 @@
 	</section>
 
 	<section class="space-y-3">
-		<h2 class="text-sm font-semibold tracking-widest text-faint uppercase">Open source</h2>
+		<h2 class="text-sm font-semibold text-ink">Open source</h2>
 		<p class="leading-relaxed text-muted">
 			Tangent is open source under the MIT license. Read the code, file an issue, or fork it on
 			<a

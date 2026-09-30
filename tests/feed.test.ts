@@ -290,6 +290,47 @@ describe('selectNext', () => {
 			});
 			expect(categoryAffinity(dated, ctx)).toBeGreaterThan(0);
 		});
+
+		it('does not connect unrelated biographies through category housekeeping', () => {
+			const ctx = context({
+				runCategories: new Set(['births', 'deaths', 'living', 'people', 'history', 'historical',
+					'establishments', 'disestablishments', 'former', 'french', 'painters'])
+			});
+			const unrelated = candidate({
+				title: 'A scientist', categories: ['Category:Living people', 'Category:People in history',
+					'Category:Births', 'Category:Deaths', 'Category:Historical establishments',
+					'Category:Former disestablishments', 'Category:Scientists']
+			});
+			expect(categoryAffinity(unrelated, ctx)).toBe(0);
+			expect(categoryAffinity(candidate({ categories: ['Category:French painters'] }), ctx))
+				.toBeGreaterThan(0);
+		});
+
+		it('preserves place and era affinity even without a shared subject', () => {
+			const ctx = context({ runCategories: new Set(['ancient', 'rome', 'history']) });
+			expect(categoryAffinity(candidate({ categories: ['Category:History of Ancient Rome'] }), ctx))
+				.toBeCloseTo(Math.tanh(1));
+		});
+
+		it('prefers a real continuation over a biography sharing only housekeeping categories', () => {
+			const ctx = context({
+				runCategories: new Set(['births', 'deaths', 'living', 'people', 'history', 'historical',
+					'establishments', 'disestablishments', 'former', 'painters']),
+				rng: seq([0.99, 0])
+			});
+			const biography = candidate({
+				title: 'Scientist', description: 'Person', position: 0,
+				categories: ['Category:Births', 'Category:Deaths', 'Category:Living people',
+					'Category:History', 'Category:Historical establishments', 'Category:Former disestablishments']
+			});
+			const continuation = candidate({
+				title: 'Painter', description: 'Person', position: 3,
+				categories: ['Category:Painters']
+			});
+			// Position alone favors the biography; the subject thread must overcome it.
+			expect(scoreCandidate(biography, ctx)).toBeGreaterThan(scoreCandidate(continuation, ctx));
+			expect(selectNext([biography, continuation], ctx)?.candidate.title).toBe('Painter');
+		});
 	});
 
 	describe('run breaks (tangents)', () => {

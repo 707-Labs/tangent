@@ -57,9 +57,9 @@ export async function restGetText(path: string): Promise<string | null> {
 }
 
 /** GET the Action API with the given query params (format=json is added for you). */
-export async function actionGet<T>(params: Record<string, string>): Promise<T> {
+export async function actionGet<T>(params: Record<string, string>, signal?: AbortSignal): Promise<T> {
 	const qs = new URLSearchParams({ format: 'json', formatversion: '2', ...params });
-	const res = await fetch(`${ACTION_BASE}?${qs}`, { headers: HEADERS });
+	const res = await fetch(`${ACTION_BASE}?${qs}`, { headers: HEADERS, signal });
 	if (!res.ok) throw new WikiError('Action API request failed', res.status);
 	return (await res.json()) as T;
 }

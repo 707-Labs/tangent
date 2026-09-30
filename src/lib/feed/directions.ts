@@ -173,8 +173,8 @@ export function classifyDirection(
 	const sharesPlace = intersects(places, ctx.runPlaces);
 
 	if (sharesEra && sharesPlace) return null;
-	if (sharesEra && places.size > 0) return 'era';
-	if (sharesPlace && eras.size > 0) return 'place';
+	if (sharesEra && places.size > 0 && ctx.runPlaces.size > 0) return 'era';
+	if (sharesPlace && eras.size > 0 && ctx.runEras.size > 0) return 'place';
 	if (!sharesEra && !sharesPlace) {
 		for (const t of categoryTokenSet(candidate.categories)) {
 			if (ctx.runCategories.has(t) && isThemeToken(t)) return 'theme';

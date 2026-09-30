@@ -52,7 +52,7 @@ export const TASTE_OPTIONS: readonly { id: TasteId; label: string; description: 
 	{
 		id: 'people',
 		label: 'People',
-		description: 'Prefer biographies — leaders, artists, explorers, and notable lives.'
+		description: 'Prefer biographies of leaders, artists, explorers, and other people.'
 	}
 ] as const;
 

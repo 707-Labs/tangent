@@ -2,6 +2,7 @@
 	import type { FeedCard } from '$lib/feed/types';
 	import { Star, CirclePlus, LoaderCircle, ArrowRight } from '@lucide/svelte';
 	import { FEED } from '$lib/feed/config';
+	import { DwellTracker } from '$lib/engagement/dwell';
 	import { profile } from '$lib/engagement/profile.svelte';
 	import { feed } from '$lib/feed/feedState.svelte';
 	import { track } from '$lib/metrics';
@@ -76,56 +77,54 @@
 		read();
 	}
 
-	// Dwell tracking: accumulate time this card is at least half on screen.
+	// Learn from foreground reading only; hiding the page is not a rejection.
 	let el = $state<HTMLElement | null>(null);
-	let visibleSince = 0;
-	let visibleTotalMs = 0;
-	// Fire onSeen once — the first time this card is actually scrolled into view.
+	const dwell = new DwellTracker(FEED.skipMinVisibleMs, FEED.skipThresholdMs);
 	let hasSignaledSeen = false;
 
-	function flushDwell() {
-		if (!visibleSince) return;
-		const ms = performance.now() - visibleSince;
-		visibleSince = 0;
-		visibleTotalMs += ms;
-		if (ms > 500) profile.recordDwell(article, ms);
-		if (
-			visibleTotalMs >= FEED.skipMinVisibleMs &&
-			visibleTotalMs < FEED.skipThresholdMs &&
-			!interacted
-		) {
-			profile.recordSkip(article);
-			track('skip', { title: article.title });
-			// A fast-skipped tangent is a dud jump: heal it so the next cards resume
-			// from the pre-tangent tip instead of growing a run from a rejected card.
-			if (card.connection.relation === 'surprise') feed.heal(card.id);
-		}
+	function recordDwell(ms: number) {
+		if (ms > 0) profile.recordDwell(article, ms);
 	}
 
 	$effect(() => {
 		if (!el) return;
+		// Re-observe when a placeholder resolves so its real body can start accruing time.
+		const isPending = pending;
+		let inView = false;
+		function updateVisibility() {
+			const pageVisible = document.visibilityState === 'visible';
+			const signal = dwell.update(
+				{ inView, pageVisible, pending: isPending, interacted },
+				performance.now()
+			);
+			recordDwell(signal.dwellMs);
+			if (signal.skipped) {
+				profile.recordSkip(article);
+				track('skip', { title: article.title });
+				// Resume from the pre-tangent tip when a foreground reader rejects a jump.
+				if (card.connection.relation === 'surprise') feed.heal(card.id);
+			}
+			if (inView && pageVisible && !hasSignaledSeen) {
+				hasSignaledSeen = true;
+				onSeen?.();
+			}
+		}
+
 		const io = new IntersectionObserver(
 			(entries) => {
 				for (const entry of entries) {
-					if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
-						// Don't accrue dwell against a placeholder (its body isn't here yet, and
-						// the dive already credits a clickthrough on resolve); still mark it seen.
-						if (!pending && !visibleSince) visibleSince = performance.now();
-						if (!hasSignaledSeen) {
-							hasSignaledSeen = true;
-							onSeen?.();
-						}
-					} else {
-						flushDwell();
-					}
+					inView = entry.isIntersecting && entry.intersectionRatio >= 0.5;
+					updateVisibility();
 				}
 			},
 			{ threshold: [0, 0.5, 1] }
 		);
 		io.observe(el);
+		document.addEventListener('visibilitychange', updateVisibility);
 		return () => {
-			flushDwell();
 			io.disconnect();
+			document.removeEventListener('visibilitychange', updateVisibility);
+			recordDwell(dwell.finish(performance.now()));
 		};
 	});
 </script>
@@ -141,39 +140,15 @@
 	<div class="space-y-3 p-5 sm:p-6">
 		<ConnectionBreadcrumb connection={card.connection} onNavigate={onNavigateToSource} />
 
-		<!-- Text block beside a top-right thumbnail (Ben's Figma card): the image is
-		     a garnish pinned to the corner, not a hero, and the text keeps its own
-		     column instead of wrapping around it. -->
+		<!-- Keep the thumbnail beside the heading, so the summary uses the full card width. -->
 		<div class="flex items-start gap-4">
 			<div class="min-w-0 flex-1">
-			<h2 class="font-display text-2xl leading-tight font-semibold tracking-tight text-ink">
-				{article.title}
-			</h2>
-
-			{#if pending}
-				<!-- Body still loading: the title + breadcrumb landed instantly; pulse the rest.
-				     The dive scrolls to this skeleton immediately and the real body streams in
-				     after, growing the card downward. Keep this skeleton SHORTER than the
-				     shortest real card (3 short lines, no actions row): a taller skeleton would
-				     make the card shrink on resolve, re-clamp the scroll, and jump the landing
-				     spot — the exact flaky dive this fixed. Don't enrich it. -->
-				<div class="mt-3 space-y-2" aria-hidden="true">
-					<div class="h-3 w-full animate-pulse rounded-full bg-surface-2"></div>
-					<div class="h-3 w-full animate-pulse rounded-full bg-surface-2"></div>
-					<div class="h-3 w-4/5 animate-pulse rounded-full bg-surface-2"></div>
-				</div>
-				<p class="sr-only">Loading article…</p>
-			{:else}
-				{#if article.description}
+				<h2 class="font-display text-2xl leading-tight font-semibold tracking-tight text-ink">
+					{article.title}
+				</h2>
+				{#if !pending && article.description}
 					<p class="mt-1 font-display text-[15px] text-faint italic">{article.description}</p>
 				{/if}
-
-				<!-- Full summary extract: the hook. Wikipedia bounds this to a sentence-complete
-				     few paragraphs, so we show it whole rather than clamping it to a stub.
-				     Set in the body sans (Ben's Figma): the serif is the reader's voice, the
-				     card is the feed's. -->
-				<p class="mt-3 text-base leading-normal text-muted">{article.extract}</p>
-			{/if}
 			</div>
 
 			{#if article.thumbnail && !imageFailed}
@@ -188,14 +163,28 @@
 			{/if}
 		</div>
 
+		{#if pending}
+			<!-- Keep the placeholder shorter than the real body to avoid a shrinking dive landing. -->
+			<div class="space-y-2" aria-hidden="true">
+				<div class="h-3 w-full animate-pulse rounded-full bg-surface-2"></div>
+				<div class="h-3 w-full animate-pulse rounded-full bg-surface-2"></div>
+				<div class="h-3 w-4/5 animate-pulse rounded-full bg-surface-2"></div>
+			</div>
+			<p class="sr-only">Loading article…</p>
+		{:else}
+			<!-- The full summary is the hook; don't clamp it to a stub. -->
+			<p class="text-base leading-normal text-muted">{article.extract}</p>
+		{/if}
+
 		{#if !pending}
 		<div class="flex flex-wrap items-center gap-2 pt-1">
 			<button
 				type="button"
 				onclick={toggleLike}
 				aria-pressed={liked}
-				aria-label={liked ? 'Unlike' : 'Like'}
-				class="group inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm
+				aria-label={liked ? `Unlike ${article.title}` : `Like ${article.title}`}
+				title="Remember this topic for future tangents"
+				class="group inline-flex min-h-11 items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm
 					font-medium transition-all active:scale-95
 					{liked
 					? 'border-like/40 bg-like/10 text-like'
@@ -215,7 +204,9 @@
 				type="button"
 				onclick={branch}
 				disabled={branching}
-				class="inline-flex items-center gap-1.5 rounded-full border border-hair bg-read px-3
+				aria-label={`More like this: ${article.title}`}
+				title="Follow a related article now"
+				class="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-hair bg-read px-3
 					py-1.5 text-sm font-medium text-surface-2 transition-all hover:opacity-90
 					active:scale-95 disabled:opacity-50"
 			>
@@ -230,7 +221,9 @@
 			<button
 				type="button"
 				onclick={read}
-				class="group ml-auto inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm
+				aria-label={`Read article: ${article.title}`}
+				title="Open the full article"
+				class="group ml-auto inline-flex min-h-11 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm
 					font-medium text-muted transition-colors hover:text-ink"
 			>
 				Read article

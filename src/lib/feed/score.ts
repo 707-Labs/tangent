@@ -116,6 +116,13 @@ export function coherence(candidate: Candidate, ctx: EngineContext): number {
 	return Math.tanh(sharedCount(tokens, ctx.runTokens) / 2);
 }
 
+/** Category housekeeping connects unrelated biographies and broad history pages.
+ * Keep era, place and subject words: they still explain a useful connection. */
+const CATEGORY_HOUSEKEEPING = new Set([
+	'births', 'deaths', 'living', 'people', 'history', 'historical',
+	'establishments', 'disestablishments', 'former'
+]);
+
 /**
  * In-run era/region affinity: tanh-squashed count of normalized category tokens
  * shared with the run so far. Categories carry the same-time-same-place signal
@@ -123,7 +130,10 @@ export function coherence(candidate: Candidate, ctx: EngineContext): number {
  * tokens mostly don't.
  */
 export function categoryAffinity(candidate: Candidate, ctx: EngineContext): number {
-	return Math.tanh(sharedCount(categoryTokenSet(candidate.categories), ctx.runCategories) / 2);
+	const meaningful = [...categoryTokenSet(candidate.categories)].filter(
+		(token) => !CATEGORY_HOUSEKEEPING.has(token)
+	);
+	return Math.tanh(sharedCount(meaningful, ctx.runCategories) / 2);
 }
 
 /**

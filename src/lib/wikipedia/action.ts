@@ -33,6 +33,11 @@ interface ParseResponse {
 const MIN_EXPLORE = 5;
 /** Enough candidates for top-K scoring plus a real surprise middle. */
 const TARGET_EXPLORE = 14;
+/** A small lateral slice even when the lead already supplies enough candidates. */
+const RELATED_SUPPLEMENT = 6;
+/** Related enrichment is optional once the lead is substantial. Bound its search
+ * and category requests together to 1.5 seconds of additional cold-cache latency. */
+const RELATED_SUPPLEMENT_TIMEOUT_MS = 1500;
 /** titles= batch limit for non-bot clients; also our candidate cap. */
 const MAX_CANDIDATES = 50;
 
@@ -92,7 +97,7 @@ const CATEGORY_CHUNK = 10;
  *    continuation at all — silent, unresumable truncation. So hidden categories
  *    must be filtered client-side via clprop=hidden, which keeps continuation honest.
  */
-export async function fetchCategoriesFor(titles: string[]): Promise<Map<string, string[]>> {
+export async function fetchCategoriesFor(titles: string[], signal?: AbortSignal): Promise<Map<string, string[]>> {
 	const out = new Map<string, string[]>();
 	const capped = titles.slice(0, MAX_CANDIDATES);
 	if (capped.length === 0) return out;
@@ -114,7 +119,8 @@ export async function fetchCategoriesFor(titles: string[]): Promise<Map<string, 
 			// One chunk usually completes in a single request; the bound only stops a
 			// pathological continuation loop.
 			for (let i = 0; i < 4; i++) {
-				const data = await actionGet<QueryResponse>({ ...base, ...cont });
+				signal?.throwIfAborted();
+				const data = await actionGet<QueryResponse>({ ...base, ...cont }, signal);
 				for (const p of data.query?.pages ?? []) {
 					const visible = (p.categories ?? []).filter((c) => !c.hidden).map((c) => c.title);
 					if (visible.length === 0) continue;
@@ -130,12 +136,16 @@ export async function fetchCategoriesFor(titles: string[]): Promise<Map<string, 
 
 /** Fill complete categories onto candidates. Tolerates fetch failure — a candidate
  *  without categories is degraded scoring, not a missing card. */
-async function withCategories(candidates: Candidate[]): Promise<Candidate[]> {
+async function withCategories(candidates: Candidate[], signal?: AbortSignal): Promise<Candidate[]> {
 	if (candidates.length === 0) return candidates;
 	try {
-		const cats = await fetchCategoriesFor(candidates.map((c) => c.title));
+		const cats = await fetchCategoriesFor(candidates.map((c) => c.title), signal);
+		signal?.throwIfAborted();
 		return candidates.map((c) => ({ ...c, categories: cats.get(c.title) ?? [] }));
 	} catch {
+		// Cancellation discards the optional supplement, rather than silently
+		// treating interrupted category enrichment as a completed related pool.
+		signal?.throwIfAborted();
 		return candidates;
 	}
 }
@@ -196,6 +206,10 @@ async function fetchLeadLinkTitles(title: string): Promise<string[]> {
  *  Exported so other seed sources (e.g. the Main Page feed's thumbnail-less DYK hooks)
  *  can resolve a list of titles to full candidates. */
 export async function enrichByTitles(orderedTitles: string[]): Promise<Candidate[]> {
+	return withCategories(await metadataByTitles(orderedTitles));
+}
+
+async function metadataByTitles(orderedTitles: string[]): Promise<Candidate[]> {
 	const slice = orderedTitles.slice(0, MAX_CANDIDATES);
 	if (slice.length === 0) return [];
 
@@ -235,7 +249,7 @@ export async function enrichByTitles(orderedTitles: string[]): Promise<Candidate
 		emitted.add(page.title);
 		candidates.push(toCandidate(page, 'link', position));
 	});
-	return withCategories(candidates);
+	return candidates;
 }
 
 /** Real outbound links from an article (alphabetical) — kept as a fallback source. */
@@ -253,7 +267,8 @@ export async function fetchOutboundLinks(title: string): Promise<Candidate[]> {
 }
 
 /** "More like this" via CirrusSearch — our stand-in for the dead REST related endpoint. */
-export async function fetchRelated(title: string): Promise<Candidate[]> {
+export async function fetchRelated(title: string, signal?: AbortSignal): Promise<Candidate[]> {
+	signal?.throwIfAborted();
 	const data = await actionGet<QueryResponse>({
 		action: 'query',
 		generator: 'search',
@@ -261,8 +276,19 @@ export async function fetchRelated(title: string): Promise<Candidate[]> {
 		gsrnamespace: '0',
 		gsrlimit: '20',
 		...METADATA_PROPS
-	});
-	return withCategories(refine(data.query?.pages ?? [], 'related'));
+	}, signal);
+	signal?.throwIfAborted();
+	return withCategories(refine(data.query?.pages ?? [], 'related'), signal);
+}
+
+async function fetchRelatedSupplement(title: string): Promise<Candidate[]> {
+	const controller = new AbortController();
+	const timeout = setTimeout(() => controller.abort(), RELATED_SUPPLEMENT_TIMEOUT_MS);
+	try {
+		return await fetchRelated(title, controller.signal);
+	} finally {
+		clearTimeout(timeout);
+	}
 }
 
 /** Hybrid fallback: outbound links topped up with related pages when sparse. */
@@ -282,37 +308,51 @@ async function fetchHybrid(title: string): Promise<Candidate[]> {
 
 /**
  * Primary candidate source for the feed: prominent, in-order lead-section links.
- * Tops up thinner lead pools with related pages so scoring has enough lateral,
- * potentially more interesting options; falls back to the hybrid (outbound + related)
+ * Adds a small related slice even to broad leads, and tops up thinner pools so
+ * scoring has lateral options; falls back to the hybrid (outbound + related)
  * set for stubs or parse misses, so the rabbit hole never dead-ends.
  */
 export async function fetchExploreCandidates(title: string): Promise<Candidate[]> {
 	const leadTitles = await fetchLeadLinkTitles(title);
-	const lead = (await enrichByTitles(leadTitles)).filter(
+	const metadata = (await metadataByTitles(leadTitles)).filter(
 		(c) => !c.isDisambiguation && c.title !== title
 	);
-	if (lead.length >= TARGET_EXPLORE) return lead;
-
-	if (lead.length >= MIN_EXPLORE) {
-		let related: Candidate[];
-		try {
-			related = await fetchRelated(title);
-		} catch {
-			return lead;
-		}
-		const have = new Set(lead.map((c) => c.title));
-		const extra = related
-			.filter((c) => c.title !== title && !have.has(c.title))
-			.map((c, i) => ({ ...c, position: lead.length + i }));
-		return [...lead, ...extra].slice(0, MAX_CANDIDATES);
+	if (metadata.length >= MIN_EXPLORE) {
+		// Lead categories and lateral search are independent. Enrich both at once
+		// so a cold next-card request doesn't pay their latencies sequentially.
+		const [lead, related] = await Promise.all([
+			withCategories(metadata),
+			(metadata.length >= TARGET_EXPLORE
+				? fetchRelatedSupplement(title)
+				: fetchRelated(title)).catch((): Candidate[] => [])
+		]);
+		return mergeExploreCandidates(
+			title, lead, related,
+			lead.length >= TARGET_EXPLORE ? RELATED_SUPPLEMENT : MAX_CANDIDATES - lead.length
+		);
 	}
 
+	const lead = await withCategories(metadata);
 	const fallback = await fetchHybrid(title);
-	const have = new Set(lead.map((c) => c.title));
-	const extra = fallback
-		.filter((c) => c.title !== title && !have.has(c.title))
-		.map((c, i) => ({ ...c, position: lead.length + i }));
-	return [...lead, ...extra];
+	return mergeExploreCandidates(title, lead, fallback, MAX_CANDIDATES - lead.length);
+}
+
+/** Reserve only the slots we can actually fill, keeping the most prominent lead
+ * links and their original document positions. Missing related results cost no links. */
+function mergeExploreCandidates(
+	title: string, lead: Candidate[], supplement: Candidate[], limit: number
+): Candidate[] {
+	const seen = new Set([title, ...lead.map((c) => c.title)]);
+	const extra: Candidate[] = [];
+	for (const candidate of supplement) {
+		if (candidate.isDisambiguation || seen.has(candidate.title)) continue;
+		seen.add(candidate.title);
+		extra.push(candidate);
+		if (extra.length >= limit) break;
+	}
+	const kept = lead.slice(0, MAX_CANDIDATES - extra.length);
+	const nextPosition = Math.max(-1, ...kept.map((c) => c.position ?? 0)) + 1;
+	return [...kept, ...extra.map((c, i) => ({ ...c, position: nextPosition + i }))];
 }
 
 /** Typeahead search for the /start page. */

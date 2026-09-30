@@ -23,7 +23,7 @@
 	class="flex items-center gap-3 px-1 pt-3"
 >
 	<div class="h-px flex-1 bg-hair"></div>
-	<span class="text-xs font-semibold tracking-[0.22em] text-spark uppercase">
+	<span class="text-sm font-medium text-spark">
 		{label}
 	</span>
 	<div class="h-px flex-1 bg-hair"></div>

@@ -12,33 +12,45 @@ interface Entry<T> {
 }
 
 const store = new Map<string, Entry<unknown>>();
+const inflight = new Map<string, Promise<unknown>>();
 const MAX_ENTRIES = 2000;
 
-/** Run `fn` and memoize its result under `key` for `ttlMs`. Dedupes nothing fancy. */
+/** Memoize completed results and share concurrent misses in this isolate. */
 export async function cached<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
 	const now = Date.now();
 	const hit = store.get(key) as Entry<T> | undefined;
 	if (hit && hit.expires > now) return hit.value;
 
-	const value = await fn();
-	store.set(key, { value, expires: now + ttlMs });
+	const active = inflight.get(key) as Promise<T> | undefined;
+	if (active) return active;
 
-	// Crude bound: when we blow the cap, drop the oldest-inserted entries.
-	if (store.size > MAX_ENTRIES) {
-		const overflow = store.size - MAX_ENTRIES;
-		let i = 0;
-		for (const k of store.keys()) {
-			if (i++ >= overflow) break;
-			store.delete(k);
+	const pending = Promise.resolve().then(fn).then((value) => {
+		// An invalidation during the fetch must not resurrect an obsolete value.
+		if (inflight.get(key) !== pending) return value;
+		store.set(key, { value, expires: Date.now() + ttlMs });
+
+		// Crude bound: when we blow the cap, drop the oldest-inserted entries.
+		if (store.size > MAX_ENTRIES) {
+			const overflow = store.size - MAX_ENTRIES;
+			let i = 0;
+			for (const k of store.keys()) {
+				if (i++ >= overflow) break;
+				store.delete(k);
+			}
 		}
-	}
 
-	return value;
+		return value;
+	}).finally(() => {
+		if (inflight.get(key) === pending) inflight.delete(key);
+	});
+	inflight.set(key, pending);
+	return pending;
 }
 
 /** Drop a single entry — e.g. so a transient empty result isn't memoized for its full TTL. */
 export function cacheDelete(key: string): void {
 	store.delete(key);
+	inflight.delete(key);
 }
 
 export const TTL = {
