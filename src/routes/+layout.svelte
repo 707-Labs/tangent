@@ -13,6 +13,7 @@
 	import { page } from '$app/state';
 	import BrandMark from '$lib/components/BrandMark.svelte';
 	import ProfilePanel from '$lib/components/ProfilePanel.svelte';
+	import AccountPanel from '$lib/components/AccountPanel.svelte';
 	import { Route, SlidersHorizontal, Plus, Waypoints } from '@lucide/svelte';
 	import { profile } from '$lib/engagement/profile.svelte';
 	import { reader } from '$lib/reader/readerState.svelte';
@@ -67,11 +68,12 @@
 	const showTrail = $derived(page.url.pathname === '/' && seenCount > 1);
 
 	let profileOpen = $state(false);
+	let accountOpen = $state(false);
 
 	// Reading widens the shell into a two-pane split (feed + article). Stays the
 	// narrow reading column otherwise, and on narrow screens where the reader is a
 	// full-screen takeover rather than a side pane.
-	const shellWidth = $derived(reader.isOpen ? 'max-w-2xl lg:max-w-7xl' : 'max-w-2xl');
+	const shellWidth = $derived(page.url.pathname === '/' && reader.isOpen ? 'max-w-2xl lg:max-w-7xl' : 'max-w-2xl');
 </script>
 
 <div class="flex min-h-dvh flex-col">
@@ -81,7 +83,7 @@
 	     one-shot layout transition (not per-frame); reduced-motion snaps it. -->
 	<header class="sticky top-0 z-20 border-b border-hair bg-void pt-[env(safe-area-inset-top)]">
 		<div
-			class="mx-auto flex items-center justify-between px-4 py-3
+			class="mx-auto flex w-full items-center justify-between px-4 py-3
 				transition-[max-width] duration-200 ease-out {shellWidth}"
 		>
 			<!-- -m/p pair grows the tap target past 44px without shifting the visual position. -->
@@ -93,7 +95,7 @@
 				<BrandMark />
 			</a>
 
-			<div class="flex items-center gap-2">
+			<div class="flex items-center gap-1 sm:gap-2">
 				<!-- Graph: the explorable canvas. Seeds itself from the feed's chain tip
 				     (persisted trail), so mid-feed it opens the map of where you are. -->
 				<a
@@ -101,7 +103,7 @@
 					aria-label="Explore the article graph"
 					title="Explore the article graph"
 					aria-current={page.url.pathname === '/graph' ? 'page' : undefined}
-					class="icon-btn inline-flex items-center justify-center rounded-full p-1.5
+					class="icon-btn hidden items-center justify-center rounded-full p-1.5 sm:inline-flex
 						transition-colors hover:bg-surface-2 hover:text-ink
 						{page.url.pathname === '/graph' ? 'text-ink' : 'text-muted'}"
 				>
@@ -134,12 +136,23 @@
 					</button>
 				{/if}
 
-				<!-- Settings includes feed preferences, appearance, and account sync. -->
+				<button
+					type="button"
+					onclick={() => (accountOpen = true)}
+					aria-haspopup="dialog"
+					aria-expanded={accountOpen}
+					class="inline-flex min-h-11 shrink-0 items-center rounded-full px-2 text-sm font-medium
+						text-ink transition-colors hover:bg-surface-2"
+				>
+					{auth.isAuthed ? 'Account' : 'Sign in'}
+				</button>
+
+				<!-- Settings includes feed preferences and appearance. -->
 				<button
 					type="button"
 					onclick={() => (profileOpen = !profileOpen)}
-					aria-label="Settings: interests, appearance, and account"
-					title="Settings: interests, appearance, and account"
+					aria-label="Settings"
+					title="Settings"
 					aria-expanded={profileOpen}
 					aria-haspopup="dialog"
 					class="icon-btn inline-flex items-center justify-center rounded-full p-1.5
@@ -150,7 +163,11 @@
 				</button>
 
 				{#if profileOpen}
-					<ProfilePanel onClose={() => (profileOpen = false)} />
+					<ProfilePanel onClose={() => (profileOpen = false)} onAccount={() => (accountOpen = true)} />
+				{/if}
+
+				{#if accountOpen}
+					<AccountPanel onClose={() => (accountOpen = false)} />
 				{/if}
 
 				<!-- The wordmark + this pill can overflow the bar on narrow phones, which

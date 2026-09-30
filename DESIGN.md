@@ -32,7 +32,7 @@ on its own background (the High Contrast theme clears AAA).
 | Styling | Tailwind CSS v4 (`@theme`) + CSS custom properties; utilities compile to `var(--color-*)` |
 | Component Library | None — `@lucide/svelte` for icons; components are bespoke |
 | Tokens | CSS custom properties in `src/app.css` (`@theme` block) |
-| Theming | 8 curated themes via `:root[data-theme='…']` overrides; registry in `src/lib/theme/themes.ts` |
+| Theming | System, Light, Dark, and High contrast; registry in `src/lib/theme/themes.ts` |
 | Fonts | Self-hosted via Fontsource (no Google Fonts request) |
 | Deploy target | Cloudflare Workers (`@sveltejs/adapter-cloudflare`) |
 
@@ -97,19 +97,16 @@ component-local). Motion primitives are keyframes in `app.css` (`slide-from-righ
 
 ### Themes
 
-8 curated themes (`src/lib/theme/themes.ts` + a CSS block each in `app.css`). `system` resolves
-to Nightstand (dark) / Daylight (light) from the OS. Theme choice is device-local, not synced.
+Four appearance choices keep the picker compact: System, Light, Dark, and High contrast.
+`system` resolves to the existing `nightstand` / `daylight` palettes from the OS.
+Theme choice is device-local, not synced. Retired preferences migrate to the corresponding
+light or dark default in both the prepaint script and runtime.
 
 | id | Label | Mode | Page bg | Notes |
 |---|---|---|---|---|
-| `nightstand` | Nightstand | dark | `#15110c` | Default — the canonical `@theme` palette |
-| `daylight` | Daylight | light | `#f5efe3` | Nightstand by day — warm paper, ink-on-cream |
-| `sepia` | Sepia | light | `#f3e8d2` | Tan parchment, sepia-brown ink |
-| `newsprint` | Newsprint | light | `#e9e7e1` | Cool gray-white page, coffee-brown accent |
-| `slate` | Slate | dark | `#15171c` | Cool blue-grey, warm brass accent |
-| `forest` | Forest | dark | `#0f1410` | Deep green-black, sage-forward |
-| `wine` | Wine | dark | `#1a1012` | Oxblood-black, rose-tinted ink |
-| `high-contrast` | High Contrast | dark | `#000000` | Accessibility-first, WCAG AAA, bright amber |
+| `nightstand` | Dark | dark | `#15110c` | Default, the canonical `@theme` palette |
+| `daylight` | Light | light | `#f5efe3` | Warm paper, ink-on-cream |
+| `high-contrast` | High contrast | dark | `#000000` | Bright amber with strong contrast |
 
 Adding a theme = one entry in `themes.ts` + one `:root[data-theme='…']` block in `app.css`
 (+ the inline no-flash map in `app.html` only if it's a new `system` default).
@@ -122,7 +119,8 @@ Layout defined in `src/routes/+layout.svelte`.
 
 **Navigation pattern:** sticky **top bar** (full-bleed border, inner row constrained to the
 reading column). Header holds the BrandMark (home), a Trail toggle (appears once you're past the
-seed), a Settings panel for interests/appearance/account, and a "New tangent" CTA. A footer carries Wikipedia
+seed), a visible Sign in/Account action, Settings, and a "New tangent" CTA. The graph shortcut
+appears on wider screens and remains available in Settings on phones. A footer carries Wikipedia
 attribution (CC BY-SA 4.0) + About / Terms / Source links.
 
 **Shell width:** content is a narrow reading column (`max-w-2xl`). Opening the article reader
@@ -140,7 +138,7 @@ morphs the shell into a two-pane split (`lg:max-w-7xl`) via a one-shot `transiti
 | `/terms` | Terms of Use + Privacy in one plain-language page. |
 | `/auth/verify` | Magic-link verification landing (sign-in token check; shows recovery copy on a spent/expired link). |
 
-The start page prioritizes search, immediate surprise, and mood choices above daily
+The start page prioritizes search, immediate surprise, and topic choices above daily
 picks. Search dismisses on Escape or blur and selects only results matching the
 current query. Daily picks enrich surprise only once available.
 
@@ -156,7 +154,7 @@ uses the full width below that row so phone-sized reading columns stay readable.
 - **Feed & reading** — `ArticleCard` (one article in the rabbit-hole stream; like/dive actions; joins the trail on first view), `ArticleReader` (full-article reading pane; opens the two-pane split), `SkeletonCard` (feed-card loading placeholder), `ActionHint` (one-time orientation for the Like / Dive actions), `LinkPreview` (hover peek of an in-article link — pointer-fine only, inert on touch).
 - **Trail & connections** — `TrailPanel` (the trail of articles you've actually reached; jump back to waypoints), `ConnectionBreadcrumb` ("came from" link back to a card's source), `RelationIcon` (geometric icon for a connection's relation type — the shared node/edge/point vocabulary).
 - **Brand & chrome** — `BrandMark` (wordmark + tangent-line logo with the lone ember dot at the touch-point), `Drawer` (accessible native `<dialog>` slide-in panel primitive; focus-restoring close).
-- **Settings & account** — `ProfilePanel` (Settings drawer: appearance, feed flavor, learned interests, and account), `AccountSection` (magic-link sign-in / account block inside the profile panel), `ThemePicker` (theme selector with mini live previews of each theme).
+- **Settings & account** — `ProfilePanel` (Settings drawer: compact account shortcut, appearance, feed flavor, learned interests), `AccountPanel` (dedicated sign-in/account drawer), `AccountSection` (shared account forms), `ThemePicker` (four compact appearance choices).
 
 ---
 

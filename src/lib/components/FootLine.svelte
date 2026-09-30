@@ -20,5 +20,5 @@
 	class="block w-full px-6 py-0.5 text-center font-display text-[13px] leading-snug text-faint
 		italic transition-colors hover:text-accent"
 >
-	{title}{description ? ` — ${description}` : ''}
+	{title}{description ? `: ${description}` : ''}
 </button>

@@ -32,5 +32,5 @@
 		/>
 		<ellipse cx="12.0061" cy="2.1118" rx="2.148" ry="2.1118" fill="var(--color-accent)" />
 	</svg>
-	<span class="text-ink">tangent</span>
+	<span class="hidden text-ink min-[23rem]:inline">tangent</span>
 </span>

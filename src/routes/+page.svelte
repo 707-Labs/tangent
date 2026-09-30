@@ -253,7 +253,7 @@
 <div class={reader.isOpen ? 'lg:flex lg:items-start lg:gap-6' : ''}>
 	<!-- `contents` when closed so the feed keeps its exact single-column layout. -->
 	<div class={reader.isOpen ? 'lg:w-[42%] lg:shrink-0 lg:min-w-0' : 'contents'}>
-		<h1 class="sr-only">Tangent — {feed.displayTitle ?? 'a Wikipedia rabbit hole'}</h1>
+		<h1 class="sr-only">Tangent: {feed.displayTitle ?? 'a Wikipedia rabbit hole'}</h1>
 		{#if feed.status === 'error'}
 	<div class="flex flex-col items-center gap-4 py-20 text-center">
 		<p class="text-muted">{feed.error}</p>
@@ -315,7 +315,7 @@
 			</div>
 		{:else if feed.isExhausted}
 			<div class="flex flex-col items-center gap-4 text-center">
-				<p class="text-sm text-muted">This tangent has run dry — no more links to follow.</p>
+				<p class="text-sm text-muted">No more links to follow. Try another topic.</p>
 				{#if !feed.showStartOver}
 					<button
 						type="button"

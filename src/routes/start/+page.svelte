@@ -141,19 +141,17 @@
 	<title>Start a rabbit hole · Tangent</title>
 </svelte:head>
 
-<div class="flex flex-col items-center pt-4 pb-12 text-center sm:pt-8">
-	<p class="text-xs font-medium tracking-widest text-spark uppercase">Wikipedia, one connection at a time</p>
-	<h1 class="mt-3 font-display text-3xl font-semibold tracking-tight text-ink sm:text-4xl">
+<div class="mx-auto flex w-full min-w-0 flex-col items-center pt-4 pb-12 text-center sm:pt-8">
+	<h1 class="font-display text-3xl font-semibold tracking-tight text-ink sm:text-4xl">
 		Fall down a rabbit hole
 	</h1>
 	<p class="mt-3 max-w-md text-[15px] leading-relaxed text-muted">
-		Start with a topic. Follow the connections between Wikipedia articles,
-		with a few unexpected turns along the way.
+		Pick a topic and see where it takes you.
 	</p>
 
 	<form onsubmit={onSubmit} class="relative mt-8 w-full max-w-md">
 		<Search
-			class="absolute top-1/2 left-4 size-5 -translate-y-1/2 text-faint"
+			class="pointer-events-none absolute top-4 left-4 size-5 text-faint"
 			aria-hidden="true"
 		/>
 		<input
@@ -242,7 +240,7 @@
 				{/if}
 			</ul>
 		{/if}
-		<p id="search-help" class="mt-2 text-xs text-faint">Search a person, place, idea, or anything in between.</p>
+		<p id="search-help" class="mt-2 text-xs text-faint">Try a person, place, or idea.</p>
 		<p class="sr-only" role="status" aria-live="polite">
 			{showResults ? loading ? 'Searching Wikipedia' : searchError ? 'Search unavailable' : `${currentResults.length} results` : ''}
 		</p>
@@ -262,7 +260,7 @@
 	     dives straight into a curated seed from that subject — starting is the whole
 	     struggle, so a tile launches the run instead of opening another menu. -->
 	<section class="mt-9 w-full text-left" aria-labelledby="moods-heading">
-		<h2 id="moods-heading" class="text-xs font-medium tracking-widest text-faint uppercase">In the mood for</h2>
+		<h2 id="moods-heading" class="font-display text-xl font-semibold text-ink">Choose a topic</h2>
 		<div class="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-6">
 			{#each SEED_CATEGORIES as cat (cat.id)}
 				{@const MoodIcon = MOOD_ICONS[cat.id]}
@@ -278,13 +276,12 @@
 				</button>
 			{/each}
 		</div>
-		<p class="mt-2 text-xs text-faint">Tap a mood to dive straight in.</p>
 	</section>
 
 	{#await data.today}
 		<section class="mt-14 w-full text-left" aria-hidden="true">
-			<p class="text-xs font-medium tracking-widest text-faint uppercase">Today on Wikipedia</p>
-			<p class="mt-1 text-sm text-muted">Fresh from the front page — updated every day.</p>
+			<h2 class="font-display text-xl font-semibold text-ink">Today on Wikipedia</h2>
+			<p class="mt-1 text-sm text-muted">From the front page. Updated daily.</p>
 
 			<div class="mt-6 flex flex-col gap-8">
 				<!-- First block mirrors the "On this day" timeline rows, second the DYK
@@ -312,17 +309,17 @@
 	{:then today}
 		{#if today.sections.length > 0}
 			<section class="mt-14 w-full text-left">
-				<p class="text-xs font-medium tracking-widest text-faint uppercase">Today on Wikipedia</p>
-				<p class="mt-1 text-sm text-muted">Fresh from the front page — updated every day.</p>
+				<h2 class="font-display text-xl font-semibold text-ink">Today on Wikipedia</h2>
+				<p class="mt-1 text-sm text-muted">From the front page. Updated daily.</p>
 
 				<div class="mt-6 flex flex-col gap-8">
 					{#each today.sections as section (section.id)}
 						<div>
-							<h2 class="mb-3 text-sm font-semibold text-ink">
+							<h3 class="mb-3 text-sm font-semibold text-ink">
 								{section.id === 'onthisday'
 									? `${section.label} · ${prettyDate(today.date)}`
 									: section.label}
-							</h2>
+							</h3>
 							{#if section.id === 'onthisday'}
 								<!-- Timeline list, not a card shelf: the event sentence IS the hook, so
 								     it gets the full line — and every row is a ready-made tangent launch
@@ -458,7 +455,7 @@
 	{/await}
 
 	<div class="mt-12 w-full">
-		<p class="mb-4 text-xs font-medium tracking-widest text-faint uppercase">Or pick a seed</p>
+		<h2 class="mb-4 font-display text-xl font-semibold text-ink">More places to start</h2>
 
 		<div class="flex flex-wrap justify-center gap-2">
 			{#each data.seeds as seed (seed.title)}

@@ -31,7 +31,7 @@
 >
 	<RelationIcon relation={connection.relation} />
 
-	<span class="uppercase">
+	<span>
 		{label}{#if !isSeed}
 			{#if onNavigate}
 				<!-- `inline` keeps the coarse-pointer 44px min-height (app.css) from

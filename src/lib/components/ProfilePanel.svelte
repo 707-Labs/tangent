@@ -6,10 +6,10 @@
 	import { TASTE_OPTIONS } from '$lib/feed/taste';
 	import { Atom, Cpu, Landmark, Leaf, Palette, Shuffle, Sparkles, Users } from '@lucide/svelte';
 	import Drawer from './Drawer.svelte';
-	import AccountSection from './AccountSection.svelte';
+	import { auth } from '$lib/auth/authState.svelte';
 	import ThemePicker from './ThemePicker.svelte';
 
-	let { onClose }: { onClose: () => void } = $props();
+	let { onClose, onAccount }: { onClose: () => void; onAccount?: () => void } = $props();
 
 	const tasteIcons = {
 		balanced: Shuffle,
@@ -45,13 +45,22 @@
 <Drawer title="Settings" closeLabel="Close settings" {onClose}>
 	{#snippet children(close)}
 		<div class="p-4">
+			{#if onAccount}
+				<section aria-label="Account" class="mb-5 border-b border-hair pb-4">
+					<p class="mb-2 text-sm text-muted">{auth.isAuthed ? 'Manage your account and sync.' : 'Sign in to sync your interests across devices.'}</p>
+					<button type="button" onclick={() => { close(); onAccount?.(); }}
+						class="min-h-11 w-full rounded-full bg-accent px-3 py-2 text-sm font-medium text-void transition-colors hover:bg-accent/90">
+						{auth.isAuthed ? 'Account' : 'Sign in'}
+					</button>
+				</section>
+			{/if}
 			<fieldset class="min-w-0">
-				<legend class="mb-3 text-xs font-medium tracking-wide text-faint uppercase">Appearance</legend>
+				<legend class="mb-3 text-sm font-medium text-muted">Appearance</legend>
 				<ThemePicker />
 			</fieldset>
 
 			<fieldset class="mt-5 min-w-0">
-				<legend class="mb-3 text-xs font-medium tracking-wide text-faint uppercase">Tangent flavor</legend>
+				<legend class="mb-3 text-sm font-medium text-muted">Tangent flavor</legend>
 				<div class="grid grid-cols-2 gap-2">
 					{#each TASTE_OPTIONS as option}
 						{@const Icon = tasteIcons[option.id]}
@@ -75,7 +84,7 @@
 
 			<section aria-label="Learned interests">
 				{#if hasWeights}
-					<h3 class="mb-3 mt-5 text-xs font-medium tracking-wide text-faint uppercase">Top interests</h3>
+					<h3 class="mb-3 mt-5 text-sm font-medium text-muted">Top interests</h3>
 					<ul class="space-y-2">
 						{#each topTokens as { token, effective }}
 							<li class="flex items-center justify-between gap-2">
@@ -114,10 +123,10 @@
 				{/if}
 			</section>
 
-			<!-- Account: sign in to sync the interest vector across devices. -->
-			<section class="mt-4" aria-label="Account">
-				<AccountSection />
-			</section>
+			<a href="/graph" onclick={() => close()}
+				class="mt-4 inline-flex min-h-11 items-center text-sm text-muted transition-colors hover:text-ink">
+				Explore the map
+			</a>
 
 			<!-- Reachable entry to the legal/about surface from the feed itself, since the
 			     page footer sits below an infinite scroll. -->

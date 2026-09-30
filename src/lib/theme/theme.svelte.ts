@@ -4,7 +4,7 @@ import {
 	DEFAULT_LIGHT_ID,
 	DEFAULT_THEME_ID,
 	THEME_BY_ID,
-	isThemeId,
+	normalizeThemePreference,
 	type Theme,
 	type ThemePreference
 } from './themes';
@@ -17,7 +17,11 @@ function loadPreference(): ThemePreference {
 	if (!browser) return 'system';
 	try {
 		const raw = localStorage.getItem(STORAGE_KEY);
-		if (raw === 'system' || (raw !== null && isThemeId(raw))) return raw;
+		const preference = normalizeThemePreference(raw);
+		if (raw !== null && raw !== preference) {
+			try { localStorage.setItem(STORAGE_KEY, preference); } catch { /* Read-only storage still permits migration. */ }
+		}
+		return preference;
 	} catch {
 		// localStorage unavailable (private mode / blocked) — fall through to 'system'.
 	}
