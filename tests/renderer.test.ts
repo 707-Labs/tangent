@@ -61,3 +61,73 @@ describe('same-article anchor routing', () => {
 		expect(localArticleAnchor('https://en.wikipedia.org/wiki/Earth', 'Earth')).toBeNull();
 	});
 });
+
+describe('readable source actions', () => {
+	const sources = (body: string) => sanitizeArticleHtml(`<ol class="references"><li id="cite_note-1">${body}</li></ol>`);
+
+	it('polishes a visible bibliography while preserving publication text, identifiers and prose links', () => {
+		// Ancient Greek architecture uses an ordinary Sources list, outside its reference apparatus.
+		const out = sanitizeArticleHtml(`<h3 id="Sources">Sources</h3><ul id="bibliography" class="source-list">
+<li id="fletcher"><cite id="CITEREFFletcher1996" class="citation book cs1">Fletcher, Banister (1996) [1896]. Cruickshank, Dan (ed.). <a href="https://books.google.com/books?id=Gt1jTpXAThwC"><i>Sir Banister's A History of Architecture</i></a> (20th ed.). Oxford: Architectural Press. <a href="./Special:BookSources/0-7506-2267-9">ISBN 0-7506-2267-9</a>.</cite></li>
+<li id="print"><cite class="citation book cs1">Boardman, John (1967). The Art and Architecture of Ancient Greece. London: Thames and Hudson.</cite></li>
+<li id="catalog"><cite class="citation book cs1"><a href="https://worldcat.org/oclc/123">Book catalog</a>.</cite></li></ul>
+<p>Ordinary prose <a href="https://example.test/history">History resource</a>.</p><ul><li>Ordinary list <a href="https://example.test/list">Resource</a></li></ul>`);
+		expect(out).toContain('<h4 id="Sources">Sources</h4>');
+		expect(out).toContain('<ul id="bibliography" class="wh-bibliography source-list">');
+		expect(out).not.toContain('<details');
+		expect(out.match(/class="wh-source-visit"/g)).toHaveLength(1);
+		expect(out).toContain('class="wh-source-visit" href="https://books.google.com/books?id=Gt1jTpXAThwC"');
+		for (const text of ['id="fletcher"', 'id="CITEREFFletcher1996"', "Sir Banister's A History of Architecture", 'ISBN 0-7506-2267-9', 'id="print"', 'London: Thames and Hudson.', 'id="catalog"', 'Book catalog', 'Ordinary prose', 'History resource', 'Ordinary list']) expect(out).toContain(text);
+	});
+
+	it('does not duplicate source actions inside reference disclosures or modify mixed prose lists', () => {
+		const out = sanitizeArticleHtml('<ol class="references"><li><cite class="citation cs1"><a href="https://publisher.test/paper">Paper</a></cite></li></ol><ul><li><cite class="citation cs1"><a href="https://publisher.test/mention">Mention</a></cite></li><li>Ordinary prose</li></ul>');
+		expect(out.match(/class="wh-source-visit"/g)).toHaveLength(1);
+		expect(out).not.toContain('wh-bibliography');
+	});
+
+	it('keeps citation text and makes its original URL an explicit source action', () => {
+		const out = sources('<cite id="CITEREFWriter2020">Writer (2020). <a href="https://www.publisher.test/paper?id=1&amp;page=2">Original title</a>. Journal, p. 12.</cite>');
+		expect(out).toContain('Writer (2020).');
+		expect(out).toContain('Original title');
+		expect(out).toContain('Journal, p. 12.');
+		expect(out).toContain('id="CITEREFWriter2020"');
+		expect(out).toContain('class="wh-source-visit" href="https://www.publisher.test/paper?id=1&amp;page=2"');
+		expect(out).toContain('Visit source <span>publisher.test</span>');
+		expect(out).toContain('class="wh-disclosure-show">Show');
+		expect(out).toContain('class="wh-disclosure-hide">Hide');
+	});
+
+	it('skips identifier and catalog links in favor of the linked publication', () => {
+		const out = sources('<cite><a href="https://worldcat.org/oclc/123">Catalog entry</a><a href="https://doi.org/10.1234/abc">10.1234/abc</a><a href="https://publisher.test/book">Book title</a></cite>');
+		expect(out).toContain('class="wh-source-visit" href="https://publisher.test/book"');
+		expect(out.match(/class="wh-source-visit"/g)).toHaveLength(1);
+		expect(out).toContain('https://worldcat.org/oclc/123');
+	});
+
+	it('does not invent a source action for print-only or catalog-only citations', () => {
+		for (const body of ['<cite>Writer. Printed book, p. 2.</cite>', '<cite><a href="https://worldcat.org/oclc/123">Book catalog</a></cite>', '<cite><a href="./Special:BookSources/123">ISBN</a></cite>']) {
+			expect(sources(body)).not.toContain('wh-source-visit');
+		}
+	});
+
+	it('does not promote unsafe schemes, encoded script URLs or credentialed hosts', () => {
+		for (const href of ['javascript:alert(1)', '&#106;avascript:alert(1)', 'data:text/html,hello', 'https://user:password@publisher.test/a']) {
+			expect(sources(`<cite><a href="${href}">Paper title</a></cite>`)).not.toContain('wh-source-visit');
+		}
+	});
+
+	it('retains distinct backlinks and replaces arrow-only labels', () => {
+		const out = sources('<span class="mw-cite-backlink"><a href="./Earth#cite_ref-1-0"><span>↑</span></a> <a href="./Earth#cite_ref-1-1"><span>2</span></a></span><cite>Original reference.</cite>');
+		expect(out).toContain('Earth#cite_ref-1-0">Back to text 1</a>');
+		expect(out).toContain('Earth#cite_ref-1-1">Back to text 2</a>');
+		expect(out).not.toContain('↑');
+		expect(out).toContain('id="cite_note-1"');
+	});
+
+	it('offers a source for a manually written reference with a substantive external link', () => {
+		const out = sources('An original report: <a href="https://archive.test/report">Read the report</a>.');
+		expect(out).toContain('class="wh-source-visit" href="https://archive.test/report"');
+		expect(out).toContain('An original report:');
+	});
+});

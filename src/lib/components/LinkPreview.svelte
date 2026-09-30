@@ -25,15 +25,34 @@
 	let timer: ReturnType<typeof setTimeout> | null = null;
 	let pendingTitle: string | null = null; // link we're scheduled/showing for
 	let controller: AbortController | null = null;
+	let revision = 0;
+	let listening = false;
 
-	function reset(): void {
+	function cancelPending(): void {
+		revision += 1;
 		if (timer) clearTimeout(timer);
 		timer = null;
 		pendingTitle = null;
 		controller?.abort();
 		controller = null;
+	}
+
+	function reset(): void {
+		cancelPending();
 		peek = null;
 		pos = null;
+	}
+
+	function dismiss(): void {
+		// Focusout can fire while Svelte removes the reader DOM, before effect cleanup.
+		// Cancel work immediately, but leave reactive writes outside that teardown.
+		cancelPending();
+		const dismissedRevision = revision;
+		queueMicrotask(() => {
+			if (!listening || revision !== dismissedRevision) return;
+			peek = null;
+			pos = null;
+		});
 	}
 
 	function place(link: HTMLElement): void {
@@ -49,7 +68,8 @@
 		};
 	}
 
-	async function show(link: HTMLElement, title: string): Promise<void> {
+	async function show(link: HTMLElement, title: string, intendedRevision: number): Promise<void> {
+		if (!listening || revision !== intendedRevision) return;
 		if (seen.has(title)) {
 			const cached = seen.get(title) ?? null;
 			if (!cached) return; // known-missing: nothing to peek
@@ -58,18 +78,21 @@
 			return;
 		}
 		controller?.abort();
-		controller = new AbortController();
+		const request = new AbortController();
+		controller = request;
 		try {
 			const res = await fetch(`/api/summary?title=${encodeURIComponent(title)}`, {
-				signal: controller.signal
+				signal: request.signal
 			});
 			const data: { article: Peek | null } = await res.json();
+			if (!listening || request.signal.aborted || revision !== intendedRevision) return;
 			seen.set(title, data.article);
 			if (pendingTitle !== title) return; // moved off the link before it resolved
 			if (!data.article) return;
 			place(link);
 			peek = data.article;
 		} catch (err) {
+			if (request.signal.aborted || revision !== intendedRevision || !listening) return;
 			if (err instanceof DOMException && err.name === 'AbortError') return;
 			seen.set(title, null);
 		}
@@ -82,10 +105,11 @@
 	function arm(link: HTMLElement): void {
 		const title = link.dataset.seed;
 		if (!title || title === pendingTitle) return;
-		if (timer) clearTimeout(timer);
+		cancelPending();
 		peek = null; // drop any prior card while a new one is intended
 		pendingTitle = title;
-		timer = setTimeout(() => show(link, title), SHOW_DELAY);
+		const intendedRevision = revision;
+		timer = setTimeout(() => show(link, title, intendedRevision), SHOW_DELAY);
 	}
 
 	function onOver(e: MouseEvent): void {
@@ -97,7 +121,7 @@
 		if (!link) return;
 		// Ignore moves that stay within the same link (between its child nodes).
 		if (link.contains(e.relatedTarget as Node | null)) return;
-		reset();
+		dismiss();
 	}
 	function onFocusIn(e: FocusEvent): void {
 		const link = linkFrom(e.target);
@@ -106,23 +130,28 @@
 
 	$effect(() => {
 		const el = container;
+		// Clear rendered state in the live setup effect; teardown only releases resources.
+		reset();
 		if (!canHover || !el) return;
+		listening = true;
 		el.addEventListener('mouseover', onOver);
 		el.addEventListener('mouseout', onOut);
 		el.addEventListener('focusin', onFocusIn);
-		el.addEventListener('focusout', reset);
+		el.addEventListener('focusout', dismiss);
 		// Any scroll (the reader body is its own scroller) or resize invalidates the
 		// anchored position — dismiss rather than chase it. Capture catches inner scrollers.
-		window.addEventListener('scroll', reset, true);
-		window.addEventListener('resize', reset);
+		window.addEventListener('scroll', dismiss, true);
+		window.addEventListener('resize', dismiss);
 		return () => {
+			listening = false;
 			el.removeEventListener('mouseover', onOver);
 			el.removeEventListener('mouseout', onOut);
 			el.removeEventListener('focusin', onFocusIn);
-			el.removeEventListener('focusout', reset);
-			window.removeEventListener('scroll', reset, true);
-			window.removeEventListener('resize', reset);
-			reset(); // never leave a fixed card pinned after a close/dive/content-swap
+			el.removeEventListener('focusout', dismiss);
+			window.removeEventListener('scroll', dismiss, true);
+			window.removeEventListener('resize', dismiss);
+			// Destruction removes the tooltip DOM; only release nonreactive resources.
+			cancelPending();
 		};
 	});
 </script>

@@ -57,6 +57,12 @@ export const FEED = {
 	positionWeight: 2.4,
 	/** Decay constant for the position boost (links ~this far in get ~37% of it). */
 	positionHalfLife: 10,
+	/** Soft first-hop nudge against generic process facets of the seed itself.
+	 * Smaller than the maximum prominence bonus; offsets an early lead position
+	 * plus lexical coherence without banning the subtopic.
+	 * Explicit related steering is exempt. This is a conservative prior, not an
+	 * engagement-tuned weight. */
+	seedRestatementPenalty: -1.6,
 	/**
 	 * Per-token penalty for overlapping with the current run's tokens, applied ONLY
 	 * at a run break — it pushes the tangent pool out of the neighborhood the run

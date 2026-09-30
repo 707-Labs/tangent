@@ -146,6 +146,24 @@ export function runVariety(candidate: Candidate, ctx: EngineContext): number {
 	return sharedCount(tokens, ctx.runTokens) * FEED.varietyPenalty;
 }
 
+const PROCESS_FACETS = new Set(['preparation', 'processing', 'production', 'composition', 'properties']);
+const PROCESS_DESCRIPTION = /^(?:a |the )?(?:process|method|methods|preparation|production|composition|properties)\s+(?:of|for)\b/i;
+
+/** The first automatic hop should add a subject, rather than another overview
+ * of how the seed is made. Require the complete seed title plus one generic
+ * procedural facet and a corroborating description. Shared entity words alone
+ * (Roman Empire → Byzantine Empire) are insufficient. Later contexts don't carry
+ * an unambiguous current title, so don't infer one from accumulated seen titles. */
+function isSeedRestatement(candidate: Candidate, ctx: EngineContext): boolean {
+	if (ctx.noSurprise || ctx.stepIndex !== 1 || ctx.runDepth !== 1 || ctx.seenTitles.size !== 1) return false;
+	if (!PROCESS_DESCRIPTION.test(candidate.description ?? '')) return false;
+	const seed = tokenSet(ctx.seenTitles.values().next().value);
+	const title = tokenSet(candidate.title);
+	if (!seed.size || title.size !== seed.size + 1) return false;
+	for (const token of seed) if (!title.has(token)) return false;
+	return [...title].some((token) => !seed.has(token) && PROCESS_FACETS.has(token));
+}
+
 /**
  * Score a single candidate as the next step, phase-free: the run-phase terms
  * (coherence/categoryAffinity in-run, runVariety at a break) are composed on top
@@ -194,6 +212,7 @@ export function scoreCandidate(candidate: Candidate, ctx: EngineContext): number
 	// connections. Exponential decay so the first handful get a strong, tapering boost.
 	const position = candidate.position ?? FEED.positionHalfLife;
 	score += FEED.positionWeight * Math.exp(-position / FEED.positionHalfLife);
+	if (isSeedRestatement(candidate, ctx)) score += FEED.seedRestatementPenalty;
 
 	// Dampen politics, matching title + description + (when present) categories.
 	if (isPolitical(candidateText(candidate))) score += FEED.politicalPenalty;

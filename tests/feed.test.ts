@@ -866,3 +866,64 @@ describe('directional tangents', () => {
 		expect(result?.direction).toBeUndefined();
 	});
 });
+
+
+describe('automatic seed process restatements', () => {
+	// Titles/descriptions/positions/image availability from the real Coffee lead pool.
+	const preparation = candidate({ title: 'Coffee preparation',
+		description: 'Process of turning coffee beans into a beverage', position: 0,
+		categories: ['Category:Coffee culture', 'Category:Coffee preparation'] });
+	const caffeine = candidate({ title: 'Caffeine', description: 'Central nervous system stimulant', position: 4,
+		categories: ['Category:Caffeine', 'Category:Stimulants', 'Category:Alkaloids found in plants'] });
+	const seedContext = (overrides: Partial<EngineContext> = {}) => context({
+		stepIndex: 1, runDepth: 1, seenTitles: new Set(['Coffee']),
+		runTokens: new Set(['coffee', 'beverage', 'prepared', 'roasted', 'seeds']),
+		rng: () => 0, ...overrides
+	});
+
+	it('softens the first-hop procedural restatement enough for a substantive neighbor to outrank it', () => {
+		const automatic = seedContext();
+		const unchanged = seedContext({ noSurprise: true });
+		// Without the new term: 3.55 for the position-zero facet versus ~2.76
+		// for the position-four stimulant; coherence adds yet more to the facet.
+		expect(scoreCandidate(preparation, unchanged)).toBeCloseTo(3.55, 5);
+		expect(scoreCandidate(caffeine, unchanged)).toBeCloseTo(1.15 + 2.4 * Math.exp(-0.4), 5);
+		expect(selectNext([preparation, caffeine], unchanged)?.candidate.title).toBe('Coffee preparation');
+		expect(selectNext([
+			{ ...preparation, relation: 'related' }, { ...caffeine, relation: 'related' }
+		], unchanged)?.candidate.title).toBe('Coffee preparation');
+		expect(scoreCandidate(preparation, automatic)).toBeCloseTo(
+			scoreCandidate(preparation, unchanged) + FEED.seedRestatementPenalty, 5);
+		expect(selectNext([preparation, caffeine], automatic)?.candidate.title).toBe('Caffeine');
+		// Soft demotion: a thin pool still allows the facet.
+		expect(selectNext([preparation], automatic)?.candidate.title).toBe('Coffee preparation');
+	});
+
+	it('applies generically to process facets but retains useful shared-word entity detail', () => {
+		const ctx = seedContext({ seenTitles: new Set(['Tea']) });
+		const processing = candidate({ title: 'Tea processing', description: 'Process of transforming tea leaves' });
+		expect(scoreCandidate(processing, ctx)).toBeCloseTo(
+			scoreCandidate(processing, { ...ctx, noSurprise: true }) + FEED.seedRestatementPenalty, 5);
+		const bean = candidate({ title: 'Coffee bean', description: 'Seed of the coffee plant', position: 1 });
+		expect(scoreCandidate(bean, seedContext())).toBe(scoreCandidate(bean, seedContext({ noSurprise: true })));
+		const device = candidate({ title: 'Coffee production machine', description: 'Process of preparing a drink' });
+		expect(scoreCandidate(device, seedContext())).toBe(scoreCandidate(device, seedContext({ noSurprise: true })));
+	});
+
+	it.each([
+		['Roman Empire', 'Byzantine Empire', 'Continuation of the Roman Empire (330–1453)'],
+		['Ancient Greece', 'Archaic Greece', 'Period in Greek history from circa 800 BC to 480 BC']
+	])('keeps %s to %s as a substantive continuation', (seed, title, description) => {
+		const ctx = seedContext({ seenTitles: new Set([seed]) });
+		const continuation = candidate({ title, description });
+		expect(scoreCandidate(continuation, ctx)).toBe(scoreCandidate(continuation, { ...ctx, noSurprise: true }));
+		expect(selectNext([continuation], ctx)?.candidate.title).toBe(title);
+	});
+
+	it('does not infer a current title from later history or penalize a named subject based only on overlap', () => {
+		const later = seedContext({ stepIndex: 2, runDepth: 2, seenTitles: new Set(['Coffee', 'Coffee bean']) });
+		expect(scoreCandidate(preparation, later)).toBe(scoreCandidate(preparation, { ...later, noSurprise: true }));
+		const named = candidate({ title: 'Coffee properties', description: 'Novel by a British author' });
+		expect(scoreCandidate(named, seedContext())).toBe(scoreCandidate(named, seedContext({ noSurprise: true })));
+	});
+});

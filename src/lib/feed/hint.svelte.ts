@@ -1,7 +1,7 @@
 import { browser } from '$app/environment';
 
 /**
- * First-land coachmark state for the feed's "Like" / "More like this" actions. Shown once,
+ * First-land coachmark state for the feed's reading, related-topic, and interest actions. Shown once,
  * then never again: dismissed either explicitly or the moment the reader first interacts
  * (like, branch, or open an article). The dismissal persists in localStorage.
  *

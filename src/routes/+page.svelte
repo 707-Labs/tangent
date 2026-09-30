@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { uniqueImageCardIds } from '$lib/feed/images';
 	import { tick } from 'svelte';
 	import { browser } from '$app/environment';
 	import { page } from '$app/state';
@@ -17,6 +18,7 @@
 	import ActionHint from '$lib/components/ActionHint.svelte';
 
 	const seedParam = $derived(page.url.searchParams.get('seed'));
+	let exhaustedImageCards = $state<Set<string>>(new Set());
 
 	// Rehydrate an existing session or start fresh. Runs on mount and whenever
 	// seedParam changes. rehydrate() returns false when no matching trail exists,
@@ -24,6 +26,7 @@
 	// superseded run from starting the feed it was navigated away from.
 	$effect(() => {
 		const seed = seedParam;
+		exhaustedImageCards = new Set();
 		// A new seed means a new feed — don't leave a stale article open beside it
 		// (the reader is a singleton and would otherwise orphan onto the new/errored page).
 		reader.close();
@@ -219,6 +222,10 @@
 	// title matches its breadcrumb's `fromTitle`. Lets a card's "from X" jump back to
 	// the source so the thread is navigable, not just labelled. Absent when the source
 	// scrolled out of the chain (e.g. trimmed on rehydrate) or for the seed.
+	const imageCardIds = $derived(uniqueImageCardIds(feed.cards, exhaustedImageCards));
+	function imageExhausted(id: string): void {
+		if (feed.cards.some((card) => card.id === id)) exhaustedImageCards = new Set([...exhaustedImageCards, id]);
+	}
 	const sourceIdByCard = $derived.by(() => {
 		const map = new Map<string, string>();
 		const cards = feed.cards;
@@ -281,6 +288,8 @@
 			<div data-card={card.id} class="scroll-mt-20" class:wh-land={card.id === landedId}>
 				<ArticleCard
 					{card}
+					showImage={imageCardIds.has(card.id)}
+					onImageExhausted={imageExhausted}
 					onBranch={handleBranch}
 					onRead={handleRead}
 					onNavigateToSource={sourceId ? () => goToCard(sourceId) : undefined}

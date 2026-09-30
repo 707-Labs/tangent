@@ -47,13 +47,13 @@ describe('extractLeadImage', () => {
 			expect(result?.source).toContain('Billie_Davies.jpg');
 		});
 
-		it('upscales a thumb URL to 640px and scales dimensions from the original file', () => {
+		it('upscales a thumb URL to the supported 500px size and scales dimensions from the original file', () => {
 			const result = extractLeadImage(PHOTO_THUMB);
 			expect(result).toEqual({
 				source:
-					'https://upload.wikimedia.org/wikipedia/commons/thumb/5/56/Billie_Davies.jpg/640px-Billie_Davies.jpg',
-				width: 640,
-				height: 548
+					'https://upload.wikimedia.org/wikipedia/commons/thumb/5/56/Billie_Davies.jpg/500px-Billie_Davies.jpg',
+				width: 500,
+				height: 428
 			});
 		});
 

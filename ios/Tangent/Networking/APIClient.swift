@@ -64,7 +64,11 @@ struct APIClient {
 
 	/// GET /api/article?title=… — sanitized full-article HTML body for inline reading.
 	func article(title: String) async throws -> String? {
-		let res: ArticleResponse = try await get(url("api/article", [URLQueryItem(name: "title", value: title)]))
+		// Match ARTICLE_RENDER_VERSION so URLSession cannot reuse older timeline markup.
+		let res: ArticleResponse = try await get(url("api/article", [
+			URLQueryItem(name: "title", value: title),
+			URLQueryItem(name: "v", value: "4")
+		]))
 		return res.html
 	}
 
