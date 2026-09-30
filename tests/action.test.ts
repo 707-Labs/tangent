@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const { actionGet } = vi.hoisted(() => ({ actionGet: vi.fn() }));
 vi.mock('../src/lib/wikipedia/client', () => ({ actionGet }));
 
-import { fetchRelated } from '../src/lib/wikipedia/action';
+import { fetchExploreCandidates, fetchRelated } from '../src/lib/wikipedia/action';
 
 function page(title: string, index: number, overrides: Record<string, unknown> = {}) {
 	return { pageid: index, ns: 0, title, index, description: `about ${title}`, ...overrides };
@@ -112,7 +112,11 @@ describe('fetchRelated', () => {
 				]
 			);
 
-			const out = await fetchRelated('Octopus');
+			const controller = new AbortController();
+			const out = await fetchRelated('Octopus', controller.signal);
+			expect(actionGet.mock.calls.map((call) => call[1])).toEqual([
+				controller.signal, controller.signal, controller.signal
+			]);
 			const byTitle = new Map(out.map((c) => [c.title, c.categories]));
 			expect(byTitle.get('Alpha')).toEqual(['Category:Ancient Rome', 'Category:Roman generals']);
 			expect(byTitle.get('Beta')).toEqual(['Category:Punic Wars']);
@@ -127,5 +131,127 @@ describe('fetchRelated', () => {
 			expect(out.map((c) => c.title)).toEqual(['Kept']);
 			expect(out[0].categories).toEqual([]);
 		});
+	});
+});
+
+describe('fetchExploreCandidates', () => {
+	beforeEach(() => {
+		actionGet.mockReset();
+	});
+	afterEach(() => vi.useRealTimers());
+
+	/** Dispatch by request so parallel category chunks cannot consume a search mock. */
+	function mockExplore(leadCount: number, related: ReturnType<typeof page>[], failRelated = false) {
+		actionGet.mockImplementation(async (params: Record<string, string>) => {
+			if (params.action === 'parse') {
+				// A metadata-free first link leaves a gap in the original positions.
+				return { parse: { text: '<p><a href="/wiki/Bare">bare</a>' +
+					Array.from({ length: leadCount }, (_, i) =>
+						`<a href="/wiki/Lead_${i}">lead</a>`).join('') + '</p>' } };
+			}
+			if (params.prop === 'categories') return {};
+			if (params.generator === 'search') {
+				if (failRelated) throw new Error('search unavailable');
+				return { query: { pages: related } };
+			}
+			if (params.generator === 'links') return { query: { pages: related } };
+			return { query: { pages: params.titles.split('|')
+				.filter((title) => title !== 'Bare').map((title, i) => page(title, i)) } };
+		});
+	}
+
+	it('supplements a substantial lead pool with six related alternatives after original positions', async () => {
+		mockExplore(20, Array.from({ length: 20 }, (_, i) => page(`Related ${i}`, i)));
+		const out = await fetchExploreCandidates('Source');
+		expect(out.filter((c) => c.relation === 'link')).toHaveLength(20);
+		expect(out.filter((c) => c.relation === 'related')).toHaveLength(6);
+		expect(out.slice(0, 20).map((c) => c.position)).toEqual(
+			Array.from({ length: 20 }, (_, i) => i + 1)
+		);
+		expect(out[20].position).toBe(21);
+	});
+
+	it('keeps the earliest lead links when reserving related slots at the 50-candidate cap', async () => {
+		mockExplore(50, Array.from({ length: 20 }, (_, i) => page(`Related ${i}`, i)));
+		const out = await fetchExploreCandidates('Source');
+		expect(out).toHaveLength(50);
+		expect(out.filter((c) => c.relation === 'related')).toHaveLength(6);
+		expect(out[0]).toMatchObject({ title: 'Lead 0', relation: 'link', position: 1 });
+		expect(out[43]).toMatchObject({ title: 'Lead 43', relation: 'link', position: 44 });
+	});
+
+	it('filters source, disambiguation and duplicate related titles while keeping lead identity', async () => {
+		mockExplore(14, [page('Lead 0', 0), page('Source', 1),
+			page('Ambiguous', 2, { pageprops: { disambiguation: '' } }),
+			page('Lateral', 3), page('Lateral', 4)]);
+		const out = await fetchExploreCandidates('Source');
+		expect(out).toHaveLength(15);
+		expect(out[0]).toMatchObject({ title: 'Lead 0', relation: 'link', position: 1 });
+		expect(out[14]).toMatchObject({ title: 'Lateral', relation: 'related', position: 15 });
+		expect(new Set(out.map((c) => c.title)).size).toBe(out.length);
+	});
+
+	it('returns the full lead pool when the related request fails', async () => {
+		mockExplore(50, [], true);
+		const out = await fetchExploreCandidates('Source');
+		// Bare consumes one of the 50 metadata slots; no related reservation is applied.
+		expect(out).toHaveLength(49);
+		expect(out.every((c) => c.relation === 'link')).toBe(true);
+		expect(out[48]).toMatchObject({ title: 'Lead 48', position: 49 });
+	});
+
+	it('retains thin lead pools and caps a large fallback without duplicate titles', async () => {
+		mockExplore(2, Array.from({ length: 50 }, (_, i) => page(`Fallback ${i}`, i)));
+		const out = await fetchExploreCandidates('Source');
+		expect(out).toHaveLength(50);
+		expect(out.slice(0, 2).map((c) => c.title)).toEqual(['Lead 0', 'Lead 1']);
+		expect(new Set(out.map((c) => c.title)).size).toBe(50);
+	});
+
+	it.each(['search', 'categories'])('cancels a stalled optional %s request after 1500ms and keeps the ready lead', async (stage) => {
+		vi.useFakeTimers();
+		mockExplore(20, [page('Related', 0)]);
+		const respond = actionGet.getMockImplementation()!;
+		let pendingSignal: AbortSignal | undefined;
+		let cancelled = false;
+		actionGet.mockImplementation((params: Record<string, string>, signal?: AbortSignal) => {
+			const stalled = stage === 'search'
+				? params.generator === 'search'
+				: params.prop === 'categories' && params.titles === 'Related';
+			if (!stalled) return respond(params, signal);
+			pendingSignal = signal;
+			return new Promise((_, reject) => {
+				signal?.addEventListener('abort', () => {
+					cancelled = true;
+					reject(signal.reason);
+				}, { once: true });
+			});
+		});
+		const result = fetchExploreCandidates('Source');
+		await vi.advanceTimersByTimeAsync(1499);
+		expect(pendingSignal).toBeDefined();
+		expect(pendingSignal?.aborted).toBe(false);
+		expect(cancelled).toBe(false);
+		await vi.advanceTimersByTimeAsync(1);
+		const out = await result;
+		expect(pendingSignal?.aborted).toBe(true);
+		expect(cancelled).toBe(true);
+		expect(out).toHaveLength(20);
+		expect(out.every((c) => c.relation === 'link')).toBe(true);
+		expect(out[19]).toMatchObject({ title: 'Lead 19', position: 20 });
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it('clears the optional deadline when search and category enrichment finish', async () => {
+		vi.useFakeTimers();
+		mockExplore(20, [page('Related', 0)]);
+		const out = await fetchExploreCandidates('Source');
+		expect(out).toHaveLength(21);
+		expect(vi.getTimerCount()).toBe(0);
+		const searchCall = actionGet.mock.calls.find(([params]) => params.generator === 'search');
+		const relatedCategoryCall = actionGet.mock.calls.find(([params]) =>
+			params.prop === 'categories' && params.titles === 'Related');
+		expect(searchCall?.[1]).toBeInstanceOf(AbortSignal);
+		expect(relatedCategoryCall?.[1]).toBe(searchCall?.[1]);
 	});
 });
