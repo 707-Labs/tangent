@@ -558,6 +558,7 @@
 		.trail { display: none; }
 		.graph-reader { width: 100%; }
 		.orientation { left: 16px; right: auto; top: 84px; max-width: 220px; padding: 10px 12px; }
+		.orientation .gesture-help { display: none; }
 	}
 	/* The shared reader takes over below its desktop breakpoint. Lift its containing
 	   stacking context above the shell header so close and title remain reachable. */
