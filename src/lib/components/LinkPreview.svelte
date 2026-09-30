@@ -26,12 +26,16 @@
 	let pendingTitle: string | null = null; // link we're scheduled/showing for
 	let controller: AbortController | null = null;
 
-	function reset(): void {
+	function cancelPending(): void {
 		if (timer) clearTimeout(timer);
 		timer = null;
 		pendingTitle = null;
 		controller?.abort();
 		controller = null;
+	}
+
+	function reset(): void {
+		cancelPending();
 		peek = null;
 		pos = null;
 	}
@@ -106,6 +110,8 @@
 
 	$effect(() => {
 		const el = container;
+		// Clear rendered state in the live setup effect; teardown only releases resources.
+		reset();
 		if (!canHover || !el) return;
 		el.addEventListener('mouseover', onOver);
 		el.addEventListener('mouseout', onOut);
@@ -122,7 +128,8 @@
 			el.removeEventListener('focusout', reset);
 			window.removeEventListener('scroll', reset, true);
 			window.removeEventListener('resize', reset);
-			reset(); // never leave a fixed card pinned after a close/dive/content-swap
+			// Destruction removes the tooltip DOM; only release nonreactive resources.
+			cancelPending();
 		};
 	});
 </script>
