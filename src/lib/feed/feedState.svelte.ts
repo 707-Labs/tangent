@@ -15,9 +15,10 @@ const PREFETCH_TARGET = 3;
 const MAX_CARD_ATTEMPTS = 3;
 const REHYDRATE_BATCH = 4;
 
-async function fetchCardApi(title: string): Promise<FetchResult<Article>> {
+async function fetchCardApi(title: string, immediate = false): Promise<FetchResult<Article>> {
 	try {
-		const res = await fetch(`/api/card?title=${encodeURIComponent(title)}`);
+		const imageMode = immediate ? '&image=summary' : '';
+		const res = await fetch(`/api/card?title=${encodeURIComponent(title)}${imageMode}`);
 		if (!res.ok) return { ok: false, kind: 'network' };
 		const data = (await res.json()) as { article: Article | null };
 		if (!data.article) return { ok: false, kind: 'notfound' };
@@ -74,7 +75,7 @@ class FeedState {
 	/** Serializes builds so each one sees a consistent chain tip. */
 	#tail: Promise<boolean> = Promise.resolve(false);
 	/**
-	 * Monotonically incremented on each start()/rehydrate() call.
+	 * Monotonically incremented on start(), rehydrate(), and deliberate dives.
 	 * Async operations capture the token at entry and bail if it changed —
 	 * prevents a mid-rehydrate seed change from corrupting state.
 	 */
@@ -105,7 +106,7 @@ class FeedState {
 		this.rehydrating = false;
 		this.showStartOver = false;
 
-		const result = await fetchCardApi(seedTitle);
+		const result = await fetchCardApi(seedTitle, true);
 		if (!result.ok) {
 			this.status = 'error';
 			this.error = `Couldn't open "${seedTitle}". Try another starting point.`;
@@ -126,7 +127,10 @@ class FeedState {
 	/** Reveal the next card. Called as the user scrolls toward the end. */
 	async more(): Promise<void> {
 		if (this.status === 'exhausted' || this.status === 'loading') return;
+		if (this.cards.at(-1)?.pending) return;
+		const token = this.#abortToken;
 		if (this.#buffer.length === 0) await this.#buildNext();
+		if (token !== this.#abortToken) return;
 
 		const next = this.#buffer.shift();
 		if (next) {
@@ -187,6 +191,8 @@ class FeedState {
 	 * card downward, never shifting the scroll position the dive landed on.
 	 */
 	beginDive(title: string, fromTitle: string): string {
+		// Invalidate builds/refills from the old tip without waiting for their I/O.
+		this.#abortToken++;
 		// New buffered picks were built from the old tip; the dive changes the tip.
 		this.#buffer = [];
 		const placeholder = this.#pendingCard(title, { fromTitle, relation: 'dive', runStart: true });
@@ -209,11 +215,11 @@ class FeedState {
 		title: string,
 		opts: { clickthrough?: boolean } = {}
 	): Promise<void> {
-		// Drain any inflight build, then discard whatever it buffered — it was built
-		// from the pre-dive tip and would otherwise jump the chain ahead of the dive.
-		await this.#tail;
-		this.#buffer = [];
-		const cardResult = await fetchCardApi(title);
+		const token = this.#abortToken;
+		const cardResult = await fetchCardApi(title, true);
+		// A new seed may have removed this card during the fetch. Earlier dives
+		// still present in the chain can resolve without steering the latest tip.
+		if (!this.cards.some((c) => c.id === id)) return;
 
 		if (!cardResult.ok) {
 			// Roll back the placeholder — the dive dead-ended (rare: a 404/redirect miss
@@ -232,6 +238,7 @@ class FeedState {
 		);
 		if (opts.clickthrough) profile.recordClickthrough(article);
 		profile.recordSeen(article);
+		if (token !== this.#abortToken) return;
 		this.status = 'ready';
 		void this.#refill();
 	}
@@ -341,9 +348,15 @@ class FeedState {
 	}
 
 	#refill(): Promise<void> {
+		const token = this.#abortToken;
 		return (async () => {
-			while (this.#buffer.length < PREFETCH_TARGET && this.status !== 'exhausted') {
+			while (
+				token === this.#abortToken &&
+				this.#buffer.length < PREFETCH_TARGET &&
+				this.status !== 'exhausted'
+			) {
 				const ok = await this.#buildNext();
+				if (token !== this.#abortToken) return;
 				if (!ok) {
 					// A build came up dry. If nothing is buffered and we're still 'ready'
 					// (not a retryable network 'stalled'), the hole has run out of links —
@@ -365,19 +378,21 @@ class FeedState {
 
 	/** Serialized: build one card from the chain tip and push it to the buffer. */
 	#buildNext(): Promise<boolean> {
-		const run = this.#tail.then(() => this.#doBuild());
+		const token = this.#abortToken;
+		const run = this.#tail.then(() => token === this.#abortToken ? this.#doBuild(token) : false);
 		this.#tail = run.catch(() => false);
 		return run;
 	}
 
-	async #doBuild(): Promise<boolean> {
+	async #doBuild(token: number): Promise<boolean> {
 		// The effective tip skips HEALED tangents: a tangent re-roots the feed by
 		// default, and a fast skip on it flips its trail node to isDetour so the
 		// next build resumes from the pre-tangent card instead.
 		const tip = this.#effectiveTip();
-		if (!tip) return false;
+		if (!tip || tip.pending) return false;
 
 		const linksResult = await fetchLinksApi(tip.article.title);
+		if (token !== this.#abortToken) return false;
 		if (!linksResult.ok) {
 			if (linksResult.kind === 'network') this.status = 'stalled';
 			return false;
@@ -389,6 +404,7 @@ class FeedState {
 			if (!selection) return false;
 
 			const cardResult = await fetchCardApi(selection.candidate.title);
+			if (token !== this.#abortToken) return false;
 			if (cardResult.ok) {
 				const relation: Relation = selection.surprised ? 'surprise' : selection.candidate.relation;
 				// Tangent: breadcrumb says "Tangent from <actual previous card>", not the tip.

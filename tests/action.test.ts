@@ -171,6 +171,26 @@ describe('fetchExploreCandidates', () => {
 		expect(out[20].position).toBe(21);
 	});
 
+	it('starts related search while lead category enrichment is still pending', async () => {
+		mockExplore(20, [page('Related', 0)]);
+		const normal = actionGet.getMockImplementation()!;
+		let release!: () => void;
+		const pendingCategories = new Promise<void>((resolve) => { release = resolve; });
+		actionGet.mockImplementation(async (params: Record<string, string>, signal?: AbortSignal) => {
+			if (params.prop === 'categories' && params.titles.startsWith('Lead')) {
+				await pendingCategories;
+				return {};
+			}
+			return normal(params, signal);
+		});
+		const loading = fetchExploreCandidates('Source');
+		await vi.waitFor(() => {
+			expect(actionGet.mock.calls.some(([params]) => params.generator === 'search')).toBe(true);
+		});
+		release();
+		expect((await loading).some((c) => c.title === 'Related')).toBe(true);
+	});
+
 	it('keeps the earliest lead links when reserving related slots at the 50-candidate cap', async () => {
 		mockExplore(50, Array.from({ length: 20 }, (_, i) => page(`Related ${i}`, i)));
 		const out = await fetchExploreCandidates('Source');

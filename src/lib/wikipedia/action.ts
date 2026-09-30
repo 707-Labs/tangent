@@ -206,6 +206,10 @@ async function fetchLeadLinkTitles(title: string): Promise<string[]> {
  *  Exported so other seed sources (e.g. the Main Page feed's thumbnail-less DYK hooks)
  *  can resolve a list of titles to full candidates. */
 export async function enrichByTitles(orderedTitles: string[]): Promise<Candidate[]> {
+	return withCategories(await metadataByTitles(orderedTitles));
+}
+
+async function metadataByTitles(orderedTitles: string[]): Promise<Candidate[]> {
 	const slice = orderedTitles.slice(0, MAX_CANDIDATES);
 	if (slice.length === 0) return [];
 
@@ -245,7 +249,7 @@ export async function enrichByTitles(orderedTitles: string[]): Promise<Candidate
 		emitted.add(page.title);
 		candidates.push(toCandidate(page, 'link', position));
 	});
-	return withCategories(candidates);
+	return candidates;
 }
 
 /** Real outbound links from an article (alphabetical) — kept as a fallback source. */
@@ -310,24 +314,25 @@ async function fetchHybrid(title: string): Promise<Candidate[]> {
  */
 export async function fetchExploreCandidates(title: string): Promise<Candidate[]> {
 	const leadTitles = await fetchLeadLinkTitles(title);
-	const lead = (await enrichByTitles(leadTitles)).filter(
+	const metadata = (await metadataByTitles(leadTitles)).filter(
 		(c) => !c.isDisambiguation && c.title !== title
 	);
-	if (lead.length >= MIN_EXPLORE) {
-		let related: Candidate[];
-		try {
-			related = lead.length >= TARGET_EXPLORE
-				? await fetchRelatedSupplement(title)
-				: await fetchRelated(title);
-		} catch {
-			return lead;
-		}
+	if (metadata.length >= MIN_EXPLORE) {
+		// Lead categories and lateral search are independent. Enrich both at once
+		// so a cold next-card request doesn't pay their latencies sequentially.
+		const [lead, related] = await Promise.all([
+			withCategories(metadata),
+			(metadata.length >= TARGET_EXPLORE
+				? fetchRelatedSupplement(title)
+				: fetchRelated(title)).catch((): Candidate[] => [])
+		]);
 		return mergeExploreCandidates(
 			title, lead, related,
 			lead.length >= TARGET_EXPLORE ? RELATED_SUPPLEMENT : MAX_CANDIDATES - lead.length
 		);
 	}
 
+	const lead = await withCategories(metadata);
 	const fallback = await fetchHybrid(title);
 	return mergeExploreCandidates(title, lead, fallback, MAX_CANDIDATES - lead.length);
 }

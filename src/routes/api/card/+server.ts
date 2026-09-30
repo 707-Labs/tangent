@@ -15,9 +15,12 @@ export const GET: RequestHandler = async ({ url, setHeaders, platform }) => {
 	const title = url.searchParams.get('title')?.trim();
 	if (!title) return json({ article: null, error: 'missing title' }, { status: 400 });
 	const withCategories = url.searchParams.get('categories') === '1';
+	// Explicit navigations favor immediately available summary imagery. Automatic
+	// buffered cards can still enrich missing thumbnails from the full article.
+	const leadImage = url.searchParams.get('image') !== 'summary';
 
 	try {
-		const { article, degraded } = await resolveCard(title);
+		const { article, degraded } = await resolveCard(title, { leadImage });
 		let categories: string[] = [];
 		if (withCategories && article) {
 			const canonical = article.title;
