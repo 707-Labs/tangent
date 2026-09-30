@@ -133,7 +133,7 @@ morphs the shell into a two-pane split (`lg:max-w-7xl`) via a one-shot `transiti
 |---|---|
 | `/` | The infinite feed: read connected article previews, follow a related topic, or remember an interest for future suggestions; open the reader pane and your trail. |
 | `/start` | New tangent: search Wikipedia or pick from "Today on Wikipedia" (featured / DYK / on this day / news / trending) to seed a fresh feed. |
-| `/graph` | A full-window map with seven topic regions and real Wikipedia article landmarks. Search imports articles beyond the initial map; selecting a node moves the camera immediately and loads its summary and neighborhood. Stable positions, screen-space label collision checks, and focused connections keep repeated exploration readable. Dotted paths show the order of visits. Drag, scroll, pinch, keyboard, and zoom controls navigate the canvas. Read in place or start a feed from the selection. Without `?seed=`, it resumes the feed's chain tip when available. |
+| `/graph` | A full-window article atlas with seven topic regions. A static snapshot supplies real articles, previews, connections and fixed positions. The overview draws the whole collection; zoom reveals more names. Selecting a bundled article shows its preview and known links immediately. Search also imports articles beyond the atlas. Screen-space label collision checks and focused connections keep exploration readable; dotted paths show visits. Drag, scroll, pinch, keyboard and zoom controls navigate the canvas. Read in place or start a feed from the selection. Without `?seed=`, it resumes the feed's chain tip when available. |
 | `/about` | Static page — what Tangent is, where content comes from, licensing and privacy. |
 | `/terms` | Terms of Use + Privacy in one plain-language page. |
 | `/auth/verify` | Magic-link verification landing (sign-in token check; shows recovery copy on a spent/expired link). |
@@ -147,9 +147,10 @@ aspect ratio, and omit repeat Wikimedia files within a tangent. Read article and
 Follow related carry different visual weight; Remember interest stays separate.
 
 The map uses the whole viewport below the app header. Desktop selections sit beside
-the canvas; phones use a bottom panel. Search reaches articles outside the loaded
-neighborhoods, which grow on demand rather than preloading Wikipedia. Decorative
-background stars are never presented as articles. The reader replaces the map controls
+the canvas; phones use a bottom panel. Every point represents a real article in the
+loaded collection. Local search reaches bundled articles immediately, and Wikipedia
+search extends the map beyond that sample. More labels appear with closer zoom;
+connections stay focused on the selection. The reader replaces the map controls
 while open on a phone and stays within the viewport at every scroll position.
 
 ---

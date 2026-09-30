@@ -35,21 +35,25 @@ bibliography lists remain visible and receive the same source actions.
 Renderer responses use a shared version in the request URL and server cache key so
 previously cached HTML cannot hide presentation changes after a release.
 
-The map fills the window and begins with seven topic regions containing 42 real
-article landmarks. Wikipedia search brings other articles into the map. Selecting
-a node moves the camera immediately; summaries and connections load locally. First
-placement stays stable, including redirect aliases. Solid edges show the focused
-article's discovered connections; dotted edges preserve the ordered visit trail.
-Background stars are decorative and are never clickable articles.
+The map fills the window and begins with a precomputed atlas across seven topic
+regions. Wikipedia search brings articles beyond the sample into the map. Selecting
+a bundled node moves the camera and shows its saved preview and known connections
+immediately. First placement stays stable, including redirect aliases. Solid edges
+show the focused article's known connections; dotted edges preserve the ordered
+visit trail. The overview's points represent actual articles, and zoom reveals more
+names. Acquisition details and validation are in
+[precomputed atlas](2026-09-30-precomputed-atlas.md).
 
 ## Bounds and limitations
 
-- This is an on-demand map, not a downloaded spatial index of all Wikipedia.
+- This is a sampled atlas with live expansion, not a spatial index of all Wikipedia.
   Topic regions are entry points; newly imported positions do not claim a global
   semantic embedding.
-- The client retains up to 1,200 nodes, culls to 250 visible nodes and 36 labels,
-  draws up to 30 focused connections and 12 recent visits, and retains 64 completed
-  summaries and neighborhoods each. Long exploration may discard older non-hub nodes.
+- The client preserves the static corpus and retains up to 1,200 additional live
+  nodes. Canvas draws the collection, while interactive overlays and labels remain
+  bounded. Up to 30 focused connections and 12 recent visits are drawn. The live
+  fallback retains 64 completed summaries and neighborhoods each; long exploration
+  may discard older live non-hub nodes.
 - A shared FIFO queue permits four active graph requests; two speculative
   neighborhood acquisitions share that budget with foreground requests. Requests
   time out after 18 seconds in flight. Teardown rejects queued jobs and aborts active
@@ -59,7 +63,7 @@ Background stars are decorative and are never clickable articles.
 
 ## Validation
 
-369 tests in 26 files pass; Svelte check reports zero errors/warnings and the
+382 tests in 27 files pass; Svelte check reports zero errors/warnings and the
 Cloudflare production build succeeds. New regressions cover image identity and
 fallback geometry, first-hop process ranking and related API semantics, redirect
 merging, true visit order, camera framing/zoom, bounded acquisition and teardown,

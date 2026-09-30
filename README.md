@@ -5,8 +5,10 @@ feed of article cards where each one shows **why** it connects to the last — "
 from", "related to", or a surprise "tangent". The connective tissue between articles
 is the whole point.
 
-No bundled dataset: articles are fetched live from the Wikipedia API and cached hard,
-so there's nothing to download and the feed stays current.
+The feed and article reader fetch current Wikipedia content. The map starts with a
+bundled atlas of real articles, summaries and connections so exploration can begin
+without a Wikipedia request for each selection. Search also reaches articles beyond
+the atlas.
 
 ## Stack
 
@@ -43,8 +45,8 @@ Other scripts: `bun run check` (svelte-check), `bun run test` (vitest), `bun run
    before taking another turn. Category affinity ignores generic
    housekeeping words, and directional labels require supporting metadata.
    Selection is a softmax-weighted pick among the top scorers, not a robotic argmax.
-4. **Render** — the chosen article's full summary extract leads the card as its hook,
-   with a breadcrumb explaining the connection and the image demoted to a small inset.
+4. **Render** — the chosen article's summary leads the card as its hook,
+   with a breadcrumb explaining the connection and a centered image that keeps its proportions.
    Seed and deliberate-dive cards appear as soon as their summaries arrive; optional
    full-article imagery does not hold them up. The next few cards are prefetched,
    and concurrent cache misses share one acquisition within a Worker isolate.
@@ -57,6 +59,26 @@ request-order changes and their verification; no measured production speedup is 
 
 Engagement (likes, foreground dwell time, clickthroughs) lives in `localStorage`
 and feeds the interest vector. Tunable knobs live in `src/lib/feed/config.ts`.
+
+### Article atlas
+
+`bun run build:atlas` refreshes the static map snapshot from Wikipedia. The generator
+uses a bounded, resumable local acquisition cache and saves canonical articles,
+short previews, known hyperlinks and fixed positions. It runs separately from the
+production build; deploying the site does not crawl Wikipedia.
+
+The default target is 2,000 articles. `ATLAS_TARGET=500 bun run build:atlas` creates
+a smaller sample; `ATLAS_REFRESH=1 bun run build:atlas` fetches new responses instead
+of reusing the acquisition cache. Successful cached responses let ordinary runs
+resume. Article excerpts retain their Wikipedia URLs and CC BY-SA attribution;
+the repository's MIT license covers Tangent's code, not the Wikipedia excerpts.
+
+The atlas is a sample of Wikipedia, not a complete spatial index. Its connections
+include known incoming and outgoing article hyperlinks. Topic regions are navigation
+aids, not a claim that every article belongs to one discipline. Full articles remain
+live, while map previews reflect the snapshot's generation date. See
+[atlas design](docs/specs/2026-09-30-precomputed-atlas.md) for the acquisition contract,
+size and validation.
 
 ### Layout
 

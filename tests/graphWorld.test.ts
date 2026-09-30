@@ -1,10 +1,27 @@
 import { describe, expect, it } from 'vitest';
-import { initialWorld, importNode, canonicalizeNode, appendVisit, addNeighborhood, overviewCamera, centeredCamera, zoomCamera, project, visibleNodes, visibleLabels, type WorldNode } from '../src/lib/graph/world';
+import { initialWorld, atlasWorld, localSearch, hitNode, importNode, canonicalizeNode, appendVisit, addNeighborhood, overviewCamera, centeredCamera, zoomCamera, project, visibleNodes, visibleLabels, type WorldNode } from '../src/lib/graph/world';
 import type { Candidate } from '../src/lib/wikipedia/types';
 
 const candidate = (title: string): Candidate => ({ title, description: null, thumbnail: null, categories: [], position: 0, relation: 'link', isDisambiguation: false });
 
 describe('article world', () => {
+	it.each(['summary first', 'links first'])('preserves atlas metadata and verified links for an unknown redirect: %s', (order) => {
+		const atlas = atlasWorld([{ title: 'United States', description: 'Snapshot country', thumbnail: null,
+			x: 123, y: 456, region: 'places', hub: false, neighbors: ['Mexico'] },
+			{ title: 'Mexico', description: null, thumbnail: null, x: 321, y: 654, region: 'places', hub: false, neighbors: ['United States'] }]);
+		const canonical = { title: 'United States', description: 'Live changed description', thumbnail: null };
+		let world = importNode(atlas, { title: 'Unknown redirect', description: null, thumbnail: null });
+		if (order === 'links first') {
+			world = addNeighborhood(world, 'Unknown redirect', [candidate('Live related page')]);
+			world = canonicalizeNode(world, 'Unknown redirect', canonical);
+		} else {
+			world = canonicalizeNode(world, 'Unknown redirect', canonical);
+			world = addNeighborhood(world, 'United States', [candidate('Live related page')]);
+		}
+		expect(world.find((node) => node.title === 'United States')).toEqual(atlas[0]);
+		expect(world.some((node) => node.title === 'Unknown redirect')).toBe(false);
+		expect(world.find((node) => node.title === 'Mexico')).toEqual(atlas[1]);
+	});
 	it('merges redirects at the first placement and rewrites incoming and outgoing references', () => {
 		for (const titles of [['USA', 'United States'], ['United States', 'USA']]) {
 			let world = initialWorld();
@@ -81,18 +98,54 @@ describe('article world', () => {
 		const camera = { x: 0, y: 0, k: 1 };
 		const nodes: WorldNode[] = Array.from({ length: 800 }, (_, index) => ({ ...initialWorld()[0], title: `Node ${index}`, x: index % 500, y: index % 300, hub: false }));
 		const visible = visibleNodes([...nodes, { ...nodes[0], title: 'Offscreen', x: 3000 }], camera, { width: 600, height: 400 }, 'Node 500');
-		expect(visible).toHaveLength(250);
+		expect(visible.length).toBeLessThanOrEqual(250);
+		expect(visible.length).toBeGreaterThan(0);
 		expect(visible[0].node.title).toBe('Node 500');
 		expect(visible.some((item) => item.node.title === 'Offscreen')).toBe(false);
 	});
 	it('uses semantic zoom and collision guards rather than shrinking labels together', () => {
 		const world = initialWorld();
 		const viewport = { width: 1200, height: 800 };
-		const camera = overviewCamera(viewport);
+		const camera = { ...overviewCamera(viewport), k: 0.08 };
 		const visible = visibleNodes(world, camera, viewport, null);
 		const labels = visibleLabels(visible, camera, null);
 		expect([...labels].every((title) => world.find((node) => node.title === title)?.hub)).toBe(true);
 		const crowded = world.map((node, index) => ({ node, x: index * 4, y: 30 }));
 		expect(visibleLabels(crowded, { ...camera, k: 1 }, null).size).toBeLessThan(5);
+	});
+	it('keeps static positions and every atlas node when live exploration exceeds its budget', () => {
+		const articles = Array.from({ length: 2000 }, (_, index) => ({ title: `Atlas ${index}`, description: 'Mapped article', thumbnail: null,
+			x: index, y: index % 100, region: 'science', hub: false, neighbors: ['Atlas 1'] }));
+		let world = atlasWorld(articles, [ { ...initialWorld()[0], title: 'Atlas 0', x: -999 } ]);
+		expect(world.find((node) => node.title === 'Atlas 0')?.x).toBe(0);
+		const live = Array.from({ length: 1300 }, (_, index) => ({ ...initialWorld()[0], title: `Live ${index}`, hub: false }));
+		world = addNeighborhood([...world, ...live], 'Live 1299', [candidate('Live addition')]);
+		expect(world.filter((node) => node.atlas)).toHaveLength(2000);
+		expect(world.filter((node) => !node.atlas).length).toBeLessThanOrEqual(1200);
+	});
+	it('keeps article labels clear of the larger topic-region controls', () => {
+		const node = { ...initialWorld()[0], hub: false };
+		const labels = visibleLabels([
+			{ node: { ...node, title: 'Behind region' }, x: 100, y: 62 },
+			{ node: { ...node, title: 'Clear article' }, x: 300, y: 62 }
+		], { x: 0, y: 0, k: 0.2 }, null, [{ x: 70, y: 70, width: 80, height: 44 }]);
+		expect(labels.has('Behind region')).toBe(false);
+		expect(labels.has('Clear article')).toBe(true);
+	});
+	it('hits real canvas points independently of the bounded DOM overlay', () => {
+		const world = atlasWorld(Array.from({ length: 2000 }, (_, index) => ({ title: `Article ${index}`, description: null, thumbnail: null,
+			x: index, y: 100, region: 'history', hub: false, neighbors: [] })));
+		const camera = { x: 10, y: 20, k: 1 };
+		const target = world[999];
+		expect(visibleNodes(world, camera, { width: 2200, height: 500 }, null).some(({ node }) => node === target)).toBe(false);
+		expect(hitNode(world, camera, project(target, camera))?.title).toBe(target.title);
+		expect(hitNode(world, camera, { x: 500, y: 500 })).toBeNull();
+	});
+	it('finds canonical atlas titles and aliases locally without a global search response', () => {
+		const world = importNode(initialWorld(), { title: 'United States', description: 'Country', thumbnail: null });
+		const aliases = new Map([['USA', 'United States']]);
+		expect(localSearch(world, 'USA', aliases)[0]?.title).toBe('United States');
+		expect(localSearch(world, 'United', aliases)[0]?.title).toBe('United States');
+		expect(localSearch(world, 'Unknown title', aliases)).toEqual([]);
 	});
 });

@@ -26,6 +26,8 @@ export interface WorldNode extends SearchResult {
 	hub: boolean;
 	neighbors: string[];
 	explored: boolean;
+	/** Static atlas articles survive the live-import eviction budget. */
+	atlas?: boolean;
 }
 
 export interface Camera { x: number; y: number; k: number }
@@ -75,8 +77,9 @@ export function canonicalizeNode(nodes: readonly WorldNode[], requested: string,
 	if (requested === canonical.title) return importNode(nodes, canonical);
 	const matching = nodes.filter((node) => node.title === requested || node.title === canonical.title);
 	if (!matching.length) return importNode(nodes, canonical);
-	const first = matching[0];
-	const merged: WorldNode = { ...first, ...canonical,
+	const pinned = matching.find((node) => node.atlas && node.title === canonical.title);
+	const first = pinned ?? matching[0];
+	const merged: WorldNode = pinned ?? { ...first, ...canonical,
 		description: canonical.description ?? matching.find((node) => node.description)?.description ?? null,
 		thumbnail: canonical.thumbnail ?? matching.find((node) => node.thumbnail)?.thumbnail ?? null,
 		hub: matching.some((node) => node.hub), explored: matching.some((node) => node.explored),
@@ -96,6 +99,9 @@ export function appendVisit(trail: readonly string[], title: string): string[] {
 export function addNeighborhood(nodes: readonly WorldNode[], title: string, candidates: readonly Candidate[]): WorldNode[] {
 	const parent = nodes.find((node) => node.title === title);
 	if (!parent) return [...nodes];
+	// The atlas already has verified incident links. Live redirect requests must
+	// never replace its graph, whether their links or summary arrive first.
+	if (parent.atlas) return [...nodes];
 	let next = [...nodes];
 	const usable = candidates.filter((candidate) => !candidate.isDisambiguation && candidate.title !== title);
 	for (const candidate of usable) next = importNode(next, candidate, parent);
@@ -103,11 +109,12 @@ export function addNeighborhood(nodes: readonly WorldNode[], title: string, cand
 		? { ...node, explored: true, neighbors: [...new Set(usable.map((candidate) => candidate.title))] }
 		: node);
 	// Keep memory bounded during long explorations, preserving landmarks and this neighborhood.
-	if (next.length > 1200) {
+	const liveCount = next.filter((node) => !node.atlas).length;
+	if (liveCount > 1200) {
 		const protectedTitles = new Set([title, ...usable.map((candidate) => candidate.title)]);
-		let remaining = next.length - 1200;
+		let remaining = liveCount - 1200;
 		next = next.filter((node) => {
-			if (remaining > 0 && !node.hub && !protectedTitles.has(node.title)) { remaining--; return false; }
+			if (remaining > 0 && !node.atlas && !node.hub && !protectedTitles.has(node.title)) { remaining--; return false; }
 			return true;
 		});
 	}
@@ -131,23 +138,81 @@ export function zoomCamera(camera: Camera, factor: number, pointer: { x: number;
 }
 
 export function visibleNodes(nodes: readonly WorldNode[], camera: Camera, viewport: Viewport, focus: string | null): ScreenNode[] {
-	return nodes.map((node) => ({ node, ...project(node, camera) }))
-		.filter(({ x, y }) => x > -70 && y > -70 && x < viewport.width + 70 && y < viewport.height + 70)
-		.sort((a, b) => Number(b.node.title === focus) - Number(a.node.title === focus)
-			|| Number(b.node.hub) - Number(a.node.hub)
-			|| Math.hypot(a.x - viewport.width / 2, a.y - viewport.height / 2) - Math.hypot(b.x - viewport.width / 2, b.y - viewport.height / 2))
-		.slice(0, 250);
+	const priority: ScreenNode[] = [];
+	const cells = new Map<string, ScreenNode[]>();
+	for (const node of nodes) {
+		const point = project(node, camera);
+		if (point.x < -70 || point.y < -70 || point.x > viewport.width + 70 || point.y > viewport.height + 70) continue;
+		const item = { node, ...point };
+		if (node.title === focus) priority.unshift(item);
+		else if (node.hub) priority.push(item);
+		else {
+			const key = `${Math.floor(point.x / 90)},${Math.floor(point.y / 90)}`;
+			const cell = cells.get(key) ?? [];
+			if (cell.length < 4) cell.push(item);
+			cells.set(key, cell);
+		}
+	}
+	// Round-robin spatial cells gives every part of the viewport representation,
+	// without sorting thousands of points every time the camera moves.
+	for (let depth = 0; depth < 4 && priority.length < 250; depth++) {
+		for (const cell of cells.values()) {
+			if (cell[depth]) priority.push(cell[depth]);
+			if (priority.length === 250) break;
+		}
+	}
+	return priority.slice(0, 250);
+}
+
+/** Canvas points remain selectable even when their DOM label is culled. */
+export function hitNode(nodes: readonly WorldNode[], camera: Camera, point: { x: number; y: number }, radius = 14): WorldNode | null {
+	let closest: WorldNode | null = null;
+	let distance = radius;
+	for (const node of nodes) {
+		const screen = project(node, camera);
+		const candidate = Math.hypot(point.x - screen.x, point.y - screen.y);
+		if (candidate < distance) { distance = candidate; closest = node; }
+	}
+	return closest;
+}
+
+export function atlasWorld(articles: readonly (SearchResult & { x: number; y: number; region: string; hub: boolean; neighbors: string[] })[], existing: readonly WorldNode[] = []): WorldNode[] {
+	const titles = new Set(articles.map((article) => article.title));
+	return [...articles.map((article) => ({ title: article.title, description: article.description, thumbnail: article.thumbnail,
+		x: article.x, y: article.y, region: article.region, hub: article.hub, neighbors: article.neighbors, explored: true, atlas: true })),
+		...existing.filter((node) => !titles.has(node.title))];
+}
+
+export function localSearch(nodes: readonly WorldNode[], query: string, aliases: ReadonlyMap<string, string>, limit = 8): SearchResult[] {
+	const needle = query.trim().toLocaleLowerCase();
+	if (needle.length < 2) return [];
+	const alias = [...aliases].find(([title]) => title.toLocaleLowerCase() === needle)?.[1];
+	const ranked = nodes.map((node) => {
+		const title = node.title.toLocaleLowerCase();
+		return { node, rank: title === needle || node.title === alias ? 0 : title.startsWith(needle) ? 1 : title.includes(needle) ? 2 : 3 };
+	}).filter((item) => item.rank < 3).sort((a, b) => a.rank - b.rank || a.node.title.localeCompare(b.node.title));
+	return ranked.slice(0, limit).map(({ node }) => node);
 }
 
 /** Label rectangles are in screen pixels, so zooming out never creates overlapping text. */
-export function visibleLabels(nodes: readonly ScreenNode[], camera: Camera, focus: string | null): Set<string> {
+export interface LabelRect { x: number; y: number; width: number; height: number }
+export function visibleLabels(nodes: readonly ScreenNode[], camera: Camera, focus: string | null, reserved: readonly LabelRect[] = []): Set<string> {
 	const labels = new Set<string>();
-	const boxes: { x: number; y: number; width: number }[] = [];
-	for (const { node, x, y } of nodes) {
-		if (camera.k < 0.24 && !node.hub && node.title !== focus) continue;
+	const boxes: LabelRect[] = [...reserved];
+	const groups = new Map<string, ScreenNode[]>();
+	const ordered = nodes.filter(({ node }) => node.title === focus || node.hub);
+	for (const item of nodes) {
+		if (item.node.title === focus || item.node.hub) continue;
+		const group = groups.get(item.node.region) ?? [];
+		group.push(item);
+		groups.set(item.node.region, group);
+	}
+	for (let index = 0; index < nodes.length; index++) for (const group of groups.values()) if (group[index]) ordered.push(group[index]);
+	for (const { node, x, y } of ordered) {
+		if (camera.k < 0.11 && !node.hub && node.title !== focus) continue;
 		const width = Math.min(170, node.title.length * 7 + 20);
-		const box = { x: x - width / 2, y: y + 18, width };
-		if (node.title !== focus && boxes.some((other) => Math.abs(other.y - box.y) < 28 && box.x < other.x + other.width + 12 && box.x + box.width + 12 > other.x)) continue;
+		const box = { x: x - width / 2, y: y + 18, width, height: 20 };
+		if (node.title !== focus && boxes.some((other) => box.y < other.y + other.height + 8 && box.y + box.height + 8 > other.y && box.x < other.x + other.width + 12 && box.x + box.width + 12 > other.x)) continue;
 		labels.add(node.title);
 		boxes.push(box);
 		if (labels.size >= 36) break;
