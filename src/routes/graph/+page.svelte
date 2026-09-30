@@ -492,7 +492,9 @@
 </div>
 
 <style>
-	.universe { position: relative; width: 100%; height: calc(100dvh - var(--app-header-height, 69px)); overflow: hidden; background: var(--color-void); touch-action: none; isolation: isolate; outline-offset: -3px; }
+	/* Clipping must not create a scroll container: focusing a reader link or disclosure
+	   otherwise scrolls outlying map labels and pulls the reader beneath the app header. */
+	.universe { position: relative; width: 100%; height: calc(100dvh - var(--app-header-height, 69px)); overflow: clip; background: var(--color-void); touch-action: none; isolation: isolate; outline-offset: -3px; }
 	.universe.dragging { cursor: grabbing; }
 	.map-navigation { position: absolute; inset: 0; width: 100%; height: 100%; background: transparent; border: 0; cursor: grab; }
 	.map-navigation:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -3px; }

@@ -1,318 +1,253 @@
-/**
- * Reflow Wikipedia's graphical timeline templates ({{Nature timeline}}, {{Life
- * timeline}}, {{Human timeline}}, … — the `Module:Graphical timeline` family) into
- * a mobile-native vertical timeline in the Nightstand style.
- *
- * Those templates render as a fixed-em, absolutely-positioned graphic tagged
- * `nomobile` — Wikipedia hides it on phones because it can't reflow. We instead
- * mine the graphic's own coordinate system: the `#Scale` ticks carry the integer-Gya
- * axis labels, `#Timeline` carries the colored era bands (top/height/colour), and
- * `#Annotations` carries the dated events. From that we emit a single continuous
- * vertical spine — era-coloured segments, events as dots placed at their true (log)
- * positions, life-grade onsets as ringed markers — that reads as a timeline on a
- * narrow column, with all events and links preserved.
- *
- * Detection is structural (`id="Container"` + `id="Annotations"` + `id="Timeline"`),
- * which survives sanitization, so it runs on the raw Parsoid body before attribute
- * stripping. Output uses `./`-relative hrefs so the caller's URL rewrite resolves
- * them. Anything we can't parse is left untouched (and stays hidden by the
- * `.nomobile` rule), so the transform is lossless-or-skip, never destructive.
+/** Reflow the graphical timeline family using source tick bands, never interpolated dates.
+ * The source coordinates may be nonlinear. Coordinates establish order and band membership
+ * only; the caption establishes units. Unsupported or incomplete scales remain untouched.
+ * Output is still passed through the article sanitizer, which owns URL/security policy.
  */
-
+interface Element {
+	attrs: string;
+	inner: string;
+	end: number;
+}
 interface Tick {
-	em: number;
-	gya: number;
+	position: number;
+	value: number;
 }
-
-interface Era {
-	left: number;
-	top: number;
-	height: number;
-	color: string;
-	label: string;
-	href: string;
+interface Label {
+	position: number;
+	html: string;
+	onset?: boolean;
 }
-
-interface TimelineEvent {
-	em: number;
-	label: string;
-	href: string;
+interface Period extends Label {
+	endPosition: number;
+	nested: boolean;
 }
-
-/** Replace every graphical-timeline table with a reflowed `.wh-tl` block. */
+interface Scale {
+	ticks: Tick[];
+	coordinateUnit: string;
+	ageUnit: string;
+}
 export function reflowGraphicalTimelines(html: string): string {
-	const OPEN = /<table\b[^>]*\bid="Container"[^>]*>/gi;
-	const out: string[] = [];
+	const opening = /<table\b[^>]*\bid=["']Container["'][^>]*>/gi;
+	const output: string[] = [];
 	let cursor = 0;
-
-	for (let m = OPEN.exec(html); m; m = OPEN.exec(html)) {
-		const start = m.index;
-		const end = matchingTableEnd(html, start);
-		if (end === -1) continue;
-
-		const block = html.slice(start, end);
-		// Only the Module:Graphical timeline family carries all three layer ids.
-		if (!block.includes('id="Annotations"') || !block.includes('id="Timeline"')) continue;
-
-		const reflowed = renderTimeline(block);
-		if (!reflowed) continue; // unparseable — leave the original (it stays hidden)
-
-		out.push(html.slice(cursor, start), reflowed);
-		cursor = end;
-		OPEN.lastIndex = end;
-	}
-
-	out.push(html.slice(cursor));
-	return out.join('');
-}
-
-// Vertical layout (px). The timeline reads top→bottom = present→Big Bang. Positions
-// come straight from the source's em coordinates (PX per source em), so the axis stays
-// logarithmic — which conveniently spreads the dense recent cluster. Labels can't be
-// placed at their exact dot when several events bunch up, so each is nudged down to keep
-// a minimum gap and a hairline connector links it back to its true position on the spine.
-const PX = 19;
-const TOP_PAD = 14;
-const BOTTOM_PAD = 30;
-const LABEL_GAP = 23; // min vertical px between stacked labels
-const SEGNAME_MIN = 54; // only name era segments tall enough to hold vertical text
-
-interface Marker {
-	em: number;
-	label: string;
-	href: string;
-	era: boolean; // a life-grade onset (ring) vs. a dated event (dot)
-	color?: string;
-	dotY: number;
-	labelY: number;
-	conn: boolean;
-}
-
-/** Parse one timeline table; null if it lacks the data to render meaningfully. */
-function renderTimeline(block: string): string | null {
-	const ticks = parseTicks(block);
-	const eras = parseEras(block);
-	const events = parseEvents(block);
-	if (ticks.length < 2 || eras.length === 0 || events.length === 0) return null;
-
-	const { label: title, href: titleHref } = parseTitle(block);
-	const y = (em: number): number => TOP_PAD + em * PX;
-	// Backbone eras (full width, stacked) tile the spine; the indented "life" eras run
-	// from the present back to their origin, so we surface them as onset markers.
-	const backbone = eras.filter((e) => e.left < 0.5);
-	const nested = eras.filter((e) => e.left >= 0.5);
-
-	const maxEm = Math.max(
-		...events.map((e) => e.em),
-		...eras.map((e) => e.top + e.height)
-	);
-	const height = Math.round(y(maxEm) + BOTTOM_PAD);
-
-	// Merge dated events and life-grade onsets onto one spine, then nudge labels apart.
-	const markers: Marker[] = [
-		...events.map((e) => ({ em: e.em, label: e.label, href: e.href, era: false })),
-		...nested.map((e) => ({
-			em: e.top + e.height,
-			label: e.label,
-			href: e.href,
-			era: true,
-			color: e.color
-		}))
-	]
-		.sort((a, b) => a.em - b.em)
-		.map((m): Marker => ({ ...m, dotY: 0, labelY: 0, conn: false }));
-	let last = -Infinity;
-	for (const m of markers) {
-		m.dotY = y(m.em);
-		m.labelY = Math.max(m.dotY, last + LABEL_GAP);
-		m.conn = m.labelY - m.dotY > 2;
-		last = m.labelY;
-	}
-
-	const parts: string[] = ['<div class="wh-tl">'];
-	parts.push(
-		`<div class="wh-tl-title"><a href="${esc(titleHref)}">${esc(title || 'Timeline')}</a></div>`
-	);
-	parts.push('<div class="wh-tl-axis"><span>now</span><span>13.8 billion years ago →</span></div>');
-	parts.push(`<div class="wh-tl-track" style="height:${height}px">`);
-
-	// Age gridlines + labels (the source's own integer-Gya ticks — accurate).
-	for (const t of ticks) {
-		parts.push(`<div class="wh-tl-grid" style="top:${Math.round(y(t.em))}px"></div>`);
-		parts.push(`<div class="wh-tl-age" style="top:${Math.round(y(t.em))}px">${t.gya}</div>`);
-	}
-	parts.push(
-		`<div class="wh-tl-age wh-tl-age-unit" style="top:${Math.round(y(ticks[ticks.length - 1].em) + 16)}px">Gya</div>`
-	);
-
-	// Era-coloured spine segments + vertical era names in their own lane.
-	for (const e of backbone) {
-		const top = Math.round(y(e.top));
-		const h = Math.round(e.height * PX);
-		parts.push(
-			`<div class="wh-tl-seg" style="top:${top}px;height:${h}px;background:${visColor(e.color)}"></div>`
-		);
-		if (h > SEGNAME_MIN) {
-			parts.push(
-				`<div class="wh-tl-segname" style="top:${top}px;height:${h}px">${esc(e.label)}</div>`
-			);
+	for (let match = opening.exec(html); match; match = opening.exec(html)) {
+		const element = readElement(html, match.index, 'table');
+		if (!element)
+			continue;
+		const rendered = render(html.slice(match.index, element.end));
+		if (!rendered) {
+			opening.lastIndex = element.end;
+			continue;
 		}
+		output.push(html.slice(cursor, match.index), rendered);
+		cursor = element.end;
+		opening.lastIndex = element.end;
 	}
-
-	// Markers: a dot (event) or ring (life-grade onset) on the spine + a label.
-	for (const m of markers) {
-		if (m.conn) {
-			parts.push(
-				`<div class="wh-tl-conn" style="top:${Math.round(m.dotY)}px;height:${Math.round(m.labelY - m.dotY)}px"></div>`
-			);
+	output.push(html.slice(cursor));
+	return output.join('');
+}
+function render(block: string): string | null {
+	const scaleElement = byId(block, 'Scale');
+	const timeline = byId(block, 'Timeline');
+	const annotations = byId(block, 'Annotations');
+	const caption = byId(block, 'Caption');
+	if (!scaleElement || !timeline || !annotations || !caption)
+		return null;
+	const scale = parseScale(scaleElement.inner, caption.inner);
+	if (!scale)
+		return null;
+	const periods: Period[] = [];
+	for (const element of children(timeline.inner)) {
+		const position = coordinate(element.attrs, 'top', scale.coordinateUnit);
+		const height = coordinate(element.attrs, 'height', scale.coordinateUnit);
+		const label = inline(element.inner);
+		if (!visible(label))
+			continue;
+		if (position === null || height === null || height < 0)
+			return null;
+		const left = coordinate(element.attrs, 'left', 'em');
+		if (left === null)
+			return null;
+		periods.push({ position, endPosition: position + height, html: label, nested: left >= 0.5 });
+	}
+	const labels: Label[] = [];
+	const periodLabels: string[] = [];
+	for (const element of children(annotations.inner)) {
+		const label = inline(element.inner).replace(/^[\s←]+/, '').trim();
+		if (!visible(label))
+			continue;
+		// annot-bar contains a duration label; margin-top positions its lettering,
+		// not a dated milestone or either end of the corresponding colored band.
+		if (/\bclass=["'][^"']*\bannot-bar\b/.test(element.attrs)) {
+			const start = coordinate(element.attrs, 'top', scale.coordinateUnit)
+				?? coordinate(element.attrs, 'margin-top', scale.coordinateUnit);
+			const height = coordinate(element.attrs, 'height', scale.coordinateUnit);
+			if (height !== null) {
+				if (start === null || height < 0) return null;
+				periods.push({ position: start, endPosition: start + height, html: label, nested: false });
+			} else {
+				periodLabels.push(label);
+			}
+			continue;
 		}
-		const mark = m.era
-			? `<span class="wh-tl-ring" style="border-color:${visColor(m.color ?? '#e0a14e')}"></span>`
-			: '<span class="wh-tl-dot"></span>';
-		parts.push(`<div class="wh-tl-mk" style="top:${Math.round(m.dotY)}px">${mark}</div>`);
-		parts.push(
-			`<div class="wh-tl-lab${m.era ? ' wh-tl-onset' : ''}" style="top:${Math.round(m.labelY)}px"><a href="${esc(m.href)}">${esc(m.label)}</a></div>`
-		);
+		const position = coordinate(element.attrs, 'top', scale.coordinateUnit)
+			?? coordinate(element.attrs, 'margin-top', scale.coordinateUnit);
+		if (position === null)
+			return null;
+		labels.push({ position, html: label });
 	}
-
-	parts.push('</div></div>');
-	return parts.join('');
-}
-
-/**
- * Lift a band colour to read on the dark spine. The source palette is light-theme
- * pastels plus near-black greys (the deep "matter-dominated"/"dark ages" eras), which
- * vanish on Nightstand — so anything below mid-luminance is mixed toward a warm light.
- */
-function visColor(hex: string): string {
-	const c = hex.replace('#', '');
-	let r = parseInt(c.slice(0, 2), 16);
-	let g = parseInt(c.slice(2, 4), 16);
-	let b = parseInt(c.slice(4, 6), 16);
-	const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-	if (lum < 0.62) {
-		const f = (0.62 - lum) * 1.1;
-		r = Math.min(255, Math.round(r + (220 - r) * f));
-		g = Math.min(255, Math.round(g + (205 - g) * f));
-		b = Math.min(255, Math.round(b + (170 - b) * f));
+	if (!labels.length)
+		return null;
+	for (const period of periods.filter(p => p.nested))
+		labels.push({ position: period.endPosition, html: period.html, onset: true });
+	labels.sort((a, b) => a.position - b.position);
+	const title = inline(byId(block, 'Title')?.inner ?? '') || 'Timeline';
+	const groups = new Map<number, Label[]>();
+	for (const label of labels) {
+		const index = bandIndex(label.position, scale.ticks);
+		const group = groups.get(index) ?? [];
+		group.push(label);
+		groups.set(index, group);
 	}
-	return `rgb(${r},${g},${b})`;
+	const output = ['<div class="wh-tl"><div class="wh-tl-header">',
+		`<h3 class="wh-tl-title">${title}</h3>`,
+		`<p class="wh-tl-description">Recent to ancient, grouped by age. Spacing is not to scale. Scale: ${inline(caption.inner)}.</p></div><div class="wh-tl-groups">`];
+	for (const [index, group] of groups) {
+		output.push(`<section class="wh-tl-group"><h4 class="wh-tl-range">${escape(bandLabel(index, scale))}</h4><ol class="wh-tl-events">`);
+		for (const label of group)
+			output.push(`<li class="wh-tl-event${label.onset ? ' wh-tl-onset' : ''}">${label.onset ? '<span class="wh-tl-kind">Period begins</span>' : ''}<span class="wh-tl-event-label">${label.html}</span></li>`);
+		output.push('</ol></section>');
+	}
+	output.push('</div>');
+	if (periods.length || periodLabels.length) {
+		output.push('<details class="wh-tl-periods"><summary>Time periods</summary><ul class="wh-tl-period-list">');
+		for (const period of periods.sort((a, b) => a.position - b.position)) {
+			const first = bandIndex(period.position, scale.ticks), last = bandIndex(period.endPosition, scale.ticks);
+			const range = first === last ? bandLabel(first, scale) : `${bandLabel(first, scale)} through ${bandLabel(last, scale)}`;
+			output.push(`<li><span class="wh-tl-event-label">${period.html}</span><span class="wh-tl-period-range">Source span: ${escape(range)}</span></li>`);
+		}
+		for (const label of periodLabels)
+			output.push(`<li><span class="wh-tl-event-label">${label}</span><span class="wh-tl-period-range">Range not specified in the source label.</span></li>`);
+		output.push('</ul></details>');
+	}
+	output.push('</div>');
+	return output.join('');
 }
-
-/** Axis ticks: a `top:Xem` div whose text is an integer Gya followed by an em dash. */
-function parseTicks(block: string): Tick[] {
-	const scale = slice(block, 'id="Scale"', 'id="Timeline"');
+function parseScale(html: string, caption: string): Scale | null {
+	const units = [...visible(caption).matchAll(/\b(billion|million|thousand)\s+years\s+ago\b/gi)].map(match => match[1].toLowerCase());
+	if (!units.length || new Set(units).size !== 1)
+		return null;
 	const ticks: Tick[] = [];
-	const RE = /top:\s*([\d.-]+)em[^>]*>([\s\S]*?)<\/div>/gi;
-	for (let m = RE.exec(scale); m; m = RE.exec(scale)) {
-		const n = /(\d+)\s*—/.exec(text(m[2]));
-		if (n) ticks.push({ em: parseFloat(m[1]), gya: parseInt(n[1], 10) });
+	let coordinateUnit = '';
+	for (const element of children(html)) {
+		const label = visible(element.inner).replace(/\s/g, '');
+		const value = /^([−+-]?\d+(?:\.\d+)?)—$/.exec(label);
+		if (!value)
+			continue;
+		const coord = /(?:^|[;\s"'])top:\s*(-?\d+(?:\.\d+)?)(em|px)(?:;|["'])/i.exec(element.attrs);
+		if (!coord || (coordinateUnit && coordinateUnit !== coord[2]))
+			return null;
+		coordinateUnit = coord[2];
+		ticks.push({ position: Number(coord[1]), value: Number(value[1].replace('−', '-')) });
 	}
-	// Dedup + sort by em ascending.
-	const seen = new Set<number>();
-	return ticks
-		.filter((t) => (seen.has(t.em) ? false : (seen.add(t.em), true)))
-		.sort((a, b) => a.em - b.em);
+	ticks.sort((a, b) => a.position - b.position);
+	if (ticks.length < 2 || ticks.some(t => t.value > 0))
+		return null;
+	for (let i = 1; i < ticks.length; i++)
+		if (ticks[i].position <= ticks[i - 1].position || ticks[i].value >= ticks[i - 1].value)
+			return null;
+	return { ticks, coordinateUnit, ageUnit: `${units[0]} years ago` };
 }
-
-/** Era bands: each `<div … background:#…>` carries left/top/height + a label link. */
-function parseEras(block: string): Era[] {
-	const tl = slice(block, 'id="Timeline"', 'id="Annotations"');
-	const eras: Era[] = [];
-	const RE = /<div\b([^>]*background[^>]*)>/gi;
-	for (let m = RE.exec(tl); m; m = RE.exec(tl)) {
-		const s = m[1];
-		const color = /background(?:-color)?:\s*(#[0-9a-f]+)/i.exec(s);
-		if (!color) continue;
-		const win = tl.slice(m.index + m[0].length, m.index + m[0].length + 900);
-		eras.push({
-			left: numStyle(s, 'left') ?? 0,
-			top: numStyle(s, 'top') ?? 0,
-			height: numStyle(s, 'height') ?? 0,
-			color: color[1],
-			label: anchorText(win),
-			href: firstHref(win)
-		});
-	}
-	return eras;
+function bandIndex(position: number, ticks: Tick[]): number {
+	if (position < ticks[0].position)
+		return -1;
+	for (let i = 0; i < ticks.length - 1; i++)
+		if (position < ticks[i + 1].position)
+			return i;
+	return ticks.length - 1;
 }
-
-/** Events: each annotation is a `<table role="presentation" … top:Xem>` with a label. */
-function parseEvents(block: string): TimelineEvent[] {
-	const ann = block.slice(block.indexOf('id="Annotations"'));
-	const events: TimelineEvent[] = [];
-	const RE = /<table role="presentation" style="[^"]*top:\s*([\d.-]+)em[^"]*">([\s\S]*?)<\/table>/gi;
-	for (let m = RE.exec(ann); m; m = RE.exec(ann)) {
-		const label = text(m[2]).replace(/^[←\s]+/, '');
-		if (label) events.push({ em: parseFloat(m[1]), label, href: firstHref(m[2]) });
-	}
-	return events.sort((a, b) => a.em - b.em);
+function bandLabel(index: number, scale: Scale): string {
+	const { ticks, ageUnit } = scale;
+	const format = (value: number): string => Math.abs(value).toLocaleString('en-US', { maximumFractionDigits: 10 });
+	if (index < 0)
+		return `More recent than ${format(ticks[0].value)} ${ageUnit}`;
+	if (index === ticks.length - 1)
+		return `${format(ticks[index].value)} ${ageUnit} and earlier`;
+	return `${format(ticks[index].value)}–${format(ticks[index + 1].value)} ${ageUnit}`;
 }
-
-function parseTitle(block: string): { label: string; href: string } {
-	const cell = slice(block, 'id="Title"', 'id="Navbox"') || slice(block, 'id="Title"', 'id="Scale"');
-	return { label: anchorText(cell), href: firstHref(cell) || '#' };
+function coordinate(attrs: string, key: string, unit: string): number | null {
+	const match = new RegExp(`(?:^|[;\\s"'])${key}:\\s*(-?\\d+(?:\\.\\d+)?)${unit}(?:;|["'])`, 'i').exec(attrs);
+	return match ? Number(match[1]) : null;
 }
-
-// --- small HTML helpers -----------------------------------------------------
-
-/** Index just past the `</table>` closing the `<table>` opening at `start`. -1 if unbalanced. */
-function matchingTableEnd(html: string, start: number): number {
-	const TAG = /<(\/?)table\b/gi;
-	TAG.lastIndex = start;
+function byId(html: string, id: string): Element | null {
+	const match = new RegExp(`<([a-z][\\w-]*)\\b[^>]*\\bid=["']${id}["'][^>]*>`, 'i').exec(html);
+	return match ? readElement(html, match.index, match[1]) : null;
+}
+function readElement(html: string, start: number, tag: string): Element | null {
+	const openEnd = html.indexOf('>', start);
+	if (openEnd < 0)
+		return null;
+	const pattern = new RegExp(`<(/?)${tag}\\b[^>]*>`, 'gi');
+	pattern.lastIndex = start;
 	let depth = 0;
-	for (let t = TAG.exec(html); t; t = TAG.exec(html)) {
-		depth += t[1] ? -1 : 1;
-		if (depth === 0) {
-			const close = html.indexOf('>', t.index);
-			return close === -1 ? -1 : close + 1;
-		}
+	for (let match = pattern.exec(html); match; match = pattern.exec(html)) {
+		depth += match[1] ? -1 : 1;
+		if (depth === 0)
+			return { attrs: html.slice(start, openEnd + 1), inner: html.slice(openEnd + 1, match.index), end: pattern.lastIndex };
 	}
-	return -1;
+	return null;
 }
-
-/** Substring between the element bearing marker `a` and the one bearing marker `b`. */
-function slice(block: string, a: string, b: string): string {
-	const i = block.indexOf(a);
-	if (i === -1) return '';
-	const j = block.indexOf(b, i);
-	return block.slice(i, j === -1 ? undefined : j);
+function children(html: string): Element[] {
+	const elements: Element[] = [];
+	const pattern = /<([a-z][\w-]*)\b[^>]*>/gi;
+	for (let match = pattern.exec(html); match; match = pattern.exec(html)) {
+		if (['link', 'br', 'img', 'hr', 'meta', 'input', 'source'].includes(match[1].toLowerCase()))
+			continue;
+		const element = readElement(html, match.index, match[1]);
+		if (!element)
+			continue;
+		elements.push(element);
+		pattern.lastIndex = element.end;
+	}
+	return elements;
 }
-
-function numStyle(style: string, key: string): number | null {
-	const m = new RegExp(key + ':\\s*([\\d.-]+)em').exec(style);
-	return m ? parseFloat(m[1]) : null;
+/** Retain every visible text run and anchor, flattening the fixed-position wrappers.
+ * Decode then escape text and attributes; downstream sanitizer validates href protocols.
+ */
+function inline(html: string): string {
+	html = html.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, '');
+	return html.replace(/<[^>]+>|[^<]+/g, token => {
+		if (!token.startsWith('<'))
+			return escapeText(token);
+		if (/^<\/a\s*>$/i.test(token))
+			return '</a>';
+		if (/^<a\b/i.test(token)) {
+			const href = /\bhref\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(token);
+			return `<a${href ? ` href="${escapeText(href[1] ?? href[2])}"` : ''}>`;
+		}
+		if (/^<br\b/i.test(token))
+			return ' ';
+		return '';
+	}).trim();
 }
-
-function firstHref(seg: string): string {
-	const m = /href="([^"]+)"/.exec(seg);
-	return m ? m[1] : '#';
+/** Preserve named text entities the browser knows without decoding them into markup.
+ * Splitting before decoding also preserves literal double-encoded entity text.
+ */
+function escapeText(value: string): string {
+	return value.split(/(&[a-z][a-z0-9]*;)/gi).map(part => {
+		const decoded = decode(part);
+		return /^&[a-z][a-z0-9]*;$/i.test(part) && decoded === part ? part : escape(decoded);
+	}).join('');
 }
-
-/** Visible text of the first anchor in `seg` (tags → spaces, entities decoded). */
-function anchorText(seg: string): string {
-	const m = /<a\b[^>]*>([\s\S]*?)<\/a>/i.exec(seg);
-	return text(m ? m[1] : seg);
-}
-
-/** Strip tags, decode the handful of entities Parsoid emits, collapse whitespace. */
-function text(html: string): string {
-	return decode(html.replace(/<[^>]+>/g, ' '))
-		.replace(/\s+/g, ' ')
-		.trim();
-}
-
+function visible(html: string): string { return decode(html.replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim(); }
 function decode(s: string): string {
-	return s
-		.replace(/&amp;/g, '&')
-		.replace(/&lt;/g, '<')
-		.replace(/&gt;/g, '>')
-		.replace(/&quot;/g, '"')
-		.replace(/&#0?39;/g, "'")
-		.replace(/&nbsp;/g, ' ')
-		.replace(/&#(\d+);/g, (_m, n: string) => String.fromCodePoint(parseInt(n, 10)));
+	return s.replace(/&(?:amp|lt|gt|quot|apos|nbsp|#\d+|#x[\da-f]+);/gi, entity => {
+		const names: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
+		const key = entity.slice(1, -1).toLowerCase();
+		if (names[key])
+			return names[key];
+		const number = key.startsWith('#x') ? parseInt(key.slice(2), 16) : parseInt(key.slice(1), 10);
+		return number >= 0 && number <= 0x10ffff && !(number >= 0xd800 && number <= 0xdfff) ? String.fromCodePoint(number) : '�';
+	});
 }
-
-function esc(s: string): string {
-	return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
+function escape(s: string): string { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }

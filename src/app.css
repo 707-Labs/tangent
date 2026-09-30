@@ -818,146 +818,143 @@ body::before {
 .wiki-content a.mw-file-description::after {
 	content: none;
 }
-/*
- * Reflowed graphical timeline ({{Nature timeline}} & kin) — built server-side from the
- * desktop graphic's own coordinates (see wikipedia/timeline.ts). A single continuous
- * vertical spine: era-coloured segments, events as dots at their true (log) positions,
- * life-grade onsets as rings, with the integer-Gya axis down the left. The track height
- * and every element's top/height are inline px (computed from source em); these rules
- * own only the horizontal layout (keyed off --tl-spine) and styling. Mirrored in iOS
- * ReaderCSS.swift.
- */
+/* Graphical timelines use source age bands and normal-flow milestone rows.
+ * Coordinates establish order, not row height or interpolated dates. Keep this
+ * layout in sync with ios/Tangent/Reader/ReaderCSS.swift. */
 .wiki-content .wh-tl {
-	--tl-spine: 88px;
+	container-type: inline-size;
 	margin: 1.6em 0;
 	border: 1px solid var(--color-hair);
 	border-radius: var(--radius-card);
-	background: linear-gradient(180deg, var(--color-surface), var(--color-void));
+	background: var(--color-surface);
 	overflow: hidden;
 }
-.wiki-content .wh-tl-title {
-	font-family: var(--font-body);
-	font-size: 0.75rem;
-	font-weight: 700;
-	color: var(--color-accent);
-	padding: 0.85rem 1rem 0.15rem;
-}
-.wiki-content .wh-tl-title a {
-	color: var(--color-accent);
-	text-decoration: none;
-}
-.wiki-content .wh-tl-axis {
-	display: flex;
-	justify-content: space-between;
-	font-family: var(--font-body);
-	font-size: 0.65rem;
-	color: var(--color-faint);
-	padding: 0.4rem 1rem 0.75rem;
+.wiki-content .wh-tl-header {
+	padding: 1rem 1.25rem;
 	border-bottom: 1px solid var(--color-hair);
 }
-.wiki-content .wh-tl-track {
-	position: relative;
-	margin: 0.5rem 0;
+.wiki-content .wh-tl-title {
+	margin: 0;
+	padding: 0;
+	border: 0;
+	font-family: var(--font-display);
+	font-size: 1.2rem;
+	font-weight: 600;
+	line-height: 1.3;
+	color: var(--color-ink);
 }
-/* Age gridlines + their integer-Gya labels (left gutter). */
-.wiki-content .wh-tl-grid {
-	position: absolute;
-	left: 30px;
-	right: 14px;
-	height: 1px;
-	background: var(--color-hair);
-	opacity: 0.6;
-}
-.wiki-content .wh-tl-age {
-	position: absolute;
-	left: 10px;
-	width: 18px;
-	text-align: right;
+.wiki-content .wh-tl-title a { text-decoration: none; }
+.wiki-content .wh-tl-description {
+	margin: 0.5rem 0 0;
 	font-family: var(--font-body);
-	font-size: 0.5625rem;
-	color: var(--color-faint);
-	transform: translateY(-50%);
-}
-.wiki-content .wh-tl-age-unit {
-	transform: none;
+	font-size: 0.75rem;
+	line-height: 1.5;
 	color: var(--color-muted);
 }
-/* Era-coloured spine segment (top/height inline) + its vertical name in a left lane. */
-.wiki-content .wh-tl-seg {
-	position: absolute;
-	left: calc(var(--tl-spine) - 4px);
-	width: 8px;
-	border-radius: 4px;
-	opacity: 0.92;
+.wiki-content .wh-tl-group {
+	display: grid;
+	grid-template-columns: 8rem minmax(0, 1fr);
+	gap: 1.25rem;
+	padding: 0.85rem 1.25rem;
 }
-.wiki-content .wh-tl-segname {
-	position: absolute;
-	left: calc(var(--tl-spine) - 32px);
-	width: 24px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	writing-mode: vertical-rl;
+.wiki-content .wh-tl-group + .wh-tl-group {
+	border-top: 1px solid var(--color-hair);
+}
+.wiki-content .wh-tl-range {
+	margin: 0;
+	padding: 0.55rem 0;
+	border: 0;
 	font-family: var(--font-body);
-	font-size: 0.5625rem;
-	font-weight: 700;
-	text-align: center;
-	color: var(--color-faint);
-	opacity: 0.9;
-	overflow: hidden;
+	font-size: 0.75rem;
+	font-weight: 500;
+	line-height: 1.5;
+	color: var(--color-muted);
 }
-/* Hairline from a nudged label back to its true position on the spine. */
-.wiki-content .wh-tl-conn {
+.wiki-content .wh-tl-events {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	min-width: 0;
+}
+.wiki-content .wh-tl-event {
+	position: relative;
+	min-height: 2.75rem;
+	margin: 0;
+	padding: 0.5rem 0 0.5rem 1.2rem;
+	font-size: 1rem;
+	line-height: 1.5;
+}
+.wiki-content .wh-tl-event::before {
+	content: '';
 	position: absolute;
-	left: var(--tl-spine);
-	width: 1px;
-	background: var(--color-hair-strong);
-}
-.wiki-content .wh-tl-mk {
-	position: absolute;
-	left: var(--tl-spine);
-	transform: translate(-50%, -50%);
-}
-.wiki-content .wh-tl-dot {
-	display: block;
-	width: 9px;
-	height: 9px;
+	top: 0.95rem;
+	left: 0;
+	width: 0.4rem;
+	height: 0.4rem;
 	border-radius: 50%;
 	background: var(--color-accent);
-	box-shadow: 0 0 0 3px var(--color-void);
 }
-.wiki-content .wh-tl-ring {
+.wiki-content .wh-tl-onset::before {
+	background: transparent;
+	border: 1.5px solid var(--color-accent);
+}
+.wiki-content .wh-tl-kind {
 	display: block;
-	width: 11px;
-	height: 11px;
-	border-radius: 50%;
-	border: 2.5px solid var(--color-accent);
-	background: var(--color-void);
-	box-shadow: 0 0 0 3px var(--color-void);
-}
-.wiki-content .wh-tl-lab {
-	position: absolute;
-	left: calc(var(--tl-spine) + 14px);
-	right: 6px;
-	transform: translateY(-50%);
-	line-height: 1.15;
-}
-/* `.wh-tl-lab a` (specificity 0,2,1, defined after) outranks the client-added
-   `.wiki-content a.wh-dive` underline so spine links read clean. */
-.wiki-content .wh-tl-lab a {
-	font-size: 0.9rem;
-	color: var(--color-ink);
-	text-decoration: none;
-}
-.wiki-content .wh-tl-lab a:hover {
-	color: var(--color-accent);
-}
-/* Life-grade onset labels read as quiet era markers, not events. */
-.wiki-content .wh-tl-onset a {
 	font-family: var(--font-body);
-	font-size: 0.7rem;
-	font-weight: 700;
+	font-size: 0.6875rem;
+	line-height: 1.5;
+	color: var(--color-faint);
+}
+.wiki-content .wh-tl-event-label {
+	display: block;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+.wiki-content .wh-tl-event-label a {
+	text-decoration-thickness: 1px;
+	text-underline-offset: 0.16em;
+}
+.wiki-content .wh-tl-event-label a:hover { color: var(--color-accent); }
+.wiki-content .wh-tl-periods { border-top: 1px solid var(--color-hair); }
+.wiki-content .wh-tl-periods > summary {
+	min-height: 2.75rem;
+	padding: 0.75rem 1.25rem;
+	font-family: var(--font-body);
+	font-size: 0.75rem;
+	font-weight: 500;
 	color: var(--color-muted);
+	cursor: pointer;
+}
+.wiki-content .wh-tl-periods > summary:hover { color: var(--color-ink); }
+.wiki-content .wh-tl-period-list {
+	margin: 0;
+	padding: 0 1.25rem 0.75rem;
+	list-style: none;
+}
+.wiki-content .wh-tl-period-list > li {
+	margin: 0;
+	padding: 0.6rem 0;
+	font-size: 0.9375rem;
+	line-height: 1.5;
+}
+.wiki-content .wh-tl-period-range {
+	display: block;
+	margin-top: 0.2rem;
+	font-family: var(--font-body);
+	font-size: 0.6875rem;
+	line-height: 1.5;
+	color: var(--color-faint);
+}
+@container (max-width: 26rem) {
+	.wiki-content .wh-tl-group {
+		grid-template-columns: minmax(0, 1fr);
+		gap: 0.15rem;
+		padding: 0.75rem 1rem;
+	}
+	.wiki-content .wh-tl-range { padding: 0.3rem 0; }
+	.wiki-content .wh-tl-header { padding: 1rem; }
+	.wiki-content .wh-tl-periods > summary { padding-inline: 1rem; }
+	.wiki-content .wh-tl-period-list { padding-inline: 1rem; }
 }
 /*
  * EasyTimeline raster graphics (<timeline>) — rendered by Wikipedia as a fixed-size PNG

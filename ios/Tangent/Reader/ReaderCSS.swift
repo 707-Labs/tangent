@@ -189,50 +189,143 @@ enum ReaderCSS {
 	   hatnotes — hide them there, but keep them in running prose so phonology tables
 	   (English phonology, Tone (linguistics)) don't empty out. */
 	.wh-lead .IPA, .wh-lead .ext-phonos, .hatnote .IPA, .hatnote .ext-phonos { display: none !important; }
-	/* Reflowed graphical timeline ({{Nature timeline}} & kin) — a continuous era-coloured
-	   vertical spine with events as dots, life-grade onsets as rings, integer-Gya axis at
-	   left. top/height are inline px (from source em); these own horizontal layout (keyed
-	   off --tl-spine) + styling. Mirrors the web .wh-tl rules. */
+	/* Graphical timelines use source age bands and normal-flow milestone rows.
+	 * Coordinates establish order, not row height or interpolated dates. Keep this
+	 * layout in sync with ios/Tangent/Reader/ReaderCSS.swift. */
 	.wh-tl {
-	  --tl-spine: 88px; margin: 1.6em 0; border: 1px solid var(--hair); border-radius: 14px;
-	  background: linear-gradient(180deg, var(--surface), var(--void)); overflow: hidden;
+		container-type: inline-size;
+		margin: 1.6em 0;
+		border: 1px solid var(--hair);
+		border-radius: 14px;
+		background: var(--surface);
+		overflow: hidden;
+	}
+	.wh-tl-header {
+		padding: 1rem 1.25rem;
+		border-bottom: 1px solid var(--hair);
 	}
 	.wh-tl-title {
-	  font-family: var(--sans); font-size: 0.75rem; font-weight: 700; color: var(--accent);
-	  letter-spacing: 0.09em; text-transform: uppercase; padding: 0.85rem 1rem 0.15rem;
+		margin: 0;
+		padding: 0;
+		border: 0;
+		font-family: var(--serif);
+		font-size: 1.2rem;
+		font-weight: 600;
+		line-height: 1.3;
+		color: var(--ink);
 	}
-	.wh-tl-title a { color: var(--accent); text-decoration: none; }
-	.wh-tl-axis {
-	  display: flex; justify-content: space-between; font-family: var(--sans);
-	  font-size: 0.65rem; color: var(--faint); padding: 0.4rem 1rem 0.75rem;
-	  border-bottom: 1px solid var(--hair);
+	.wh-tl-title a { text-decoration: none; }
+	.wh-tl-description {
+		margin: 0.5rem 0 0;
+		font-family: var(--sans);
+		font-size: 0.75rem;
+		line-height: 1.5;
+		color: var(--muted);
 	}
-	.wh-tl-track { position: relative; margin: 0.5rem 0; }
-	.wh-tl-grid { position: absolute; left: 30px; right: 14px; height: 1px; background: var(--hair); opacity: 0.6; }
-	.wh-tl-age {
-	  position: absolute; left: 10px; width: 18px; text-align: right; font-family: var(--sans);
-	  font-size: 0.5625rem; color: var(--faint); transform: translateY(-50%);
+	.wh-tl-group {
+		display: grid;
+		grid-template-columns: 8rem minmax(0, 1fr);
+		gap: 1.25rem;
+		padding: 0.85rem 1.25rem;
 	}
-	.wh-tl-age-unit { transform: none; color: var(--muted); }
-	.wh-tl-seg { position: absolute; left: calc(var(--tl-spine) - 4px); width: 8px; border-radius: 4px; opacity: 0.92; }
-	.wh-tl-segname {
-	  position: absolute; left: calc(var(--tl-spine) - 32px); width: 24px; display: flex;
-	  align-items: center; justify-content: center; writing-mode: vertical-rl; font-family: var(--sans);
-	  font-size: 0.5625rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
-	  text-align: center; color: var(--faint); opacity: 0.9; overflow: hidden;
+	.wh-tl-group + .wh-tl-group {
+		border-top: 1px solid var(--hair);
 	}
-	.wh-tl-conn { position: absolute; left: var(--tl-spine); width: 1px; background: var(--hair-strong); }
-	.wh-tl-mk { position: absolute; left: var(--tl-spine); transform: translate(-50%, -50%); }
-	.wh-tl-dot { display: block; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--void); }
-	.wh-tl-ring {
-	  display: block; width: 11px; height: 11px; border-radius: 50%;
-	  border: 2.5px solid var(--accent); background: var(--void); box-shadow: 0 0 0 3px var(--void);
+	.wh-tl-range {
+		margin: 0;
+		padding: 0.55rem 0;
+		border: 0;
+		font-family: var(--sans);
+		font-size: 0.75rem;
+		font-weight: 500;
+		line-height: 1.5;
+		color: var(--muted);
 	}
-	.wh-tl-lab { position: absolute; left: calc(var(--tl-spine) + 14px); right: 6px; transform: translateY(-50%); line-height: 1.15; }
-	.wh-tl-lab a { font-size: 0.9rem; color: var(--ink); text-decoration: none; }
-	.wh-tl-onset a {
-	  font-family: var(--sans); font-size: 0.7rem; font-weight: 700;
-	  letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted);
+	.wh-tl-events {
+		margin: 0;
+		padding: 0;
+		list-style: none;
+		min-width: 0;
+	}
+	.wh-tl-event {
+		position: relative;
+		min-height: 2.75rem;
+		margin: 0;
+		padding: 0.5rem 0 0.5rem 1.2rem;
+		font-size: 1rem;
+		line-height: 1.5;
+	}
+	.wh-tl-event::before {
+		content: '';
+		position: absolute;
+		top: 0.95rem;
+		left: 0;
+		width: 0.4rem;
+		height: 0.4rem;
+		border-radius: 50%;
+		background: var(--accent);
+	}
+	.wh-tl-onset::before {
+		background: transparent;
+		border: 1.5px solid var(--accent);
+	}
+	.wh-tl-kind {
+		display: block;
+		font-family: var(--sans);
+		font-size: 0.6875rem;
+		line-height: 1.5;
+		color: var(--faint);
+	}
+	.wh-tl-event-label {
+		display: block;
+		min-width: 0;
+		overflow-wrap: anywhere;
+	}
+	.wh-tl-event-label a {
+		text-decoration-thickness: 1px;
+		text-underline-offset: 0.16em;
+	}
+	.wh-tl-event-label a:hover { color: var(--accent); }
+	.wh-tl-periods { border-top: 1px solid var(--hair); }
+	.wh-tl-periods > summary {
+		min-height: 2.75rem;
+		padding: 0.75rem 1.25rem;
+		font-family: var(--sans);
+		font-size: 0.75rem;
+		font-weight: 500;
+		color: var(--muted);
+		cursor: pointer;
+	}
+	.wh-tl-periods > summary:hover { color: var(--ink); }
+	.wh-tl-period-list {
+		margin: 0;
+		padding: 0 1.25rem 0.75rem;
+		list-style: none;
+	}
+	.wh-tl-period-list > li {
+		margin: 0;
+		padding: 0.6rem 0;
+		font-size: 0.9375rem;
+		line-height: 1.5;
+	}
+	.wh-tl-period-range {
+		display: block;
+		margin-top: 0.2rem;
+		font-family: var(--sans);
+		font-size: 0.6875rem;
+		line-height: 1.5;
+		color: var(--faint);
+	}
+	@container (max-width: 26rem) {
+		.wh-tl-group {
+			grid-template-columns: minmax(0, 1fr);
+			gap: 0.15rem;
+			padding: 0.75rem 1rem;
+		}
+		.wh-tl-range { padding: 0.3rem 0; }
+		.wh-tl-header { padding: 1rem; }
+		.wh-tl-periods > summary { padding-inline: 1rem; }
+		.wh-tl-period-list { padding-inline: 1rem; }
 	}
 	/* EasyTimeline raster graphics (<timeline>) — a fixed-size PNG (e.g. 1100×120) with a
 	   pixel-coordinate <map>/<area> overlay, wrapped in div.timeline-wrapper. The global

@@ -89,7 +89,7 @@ URL provenance, aliases, actual incident-edge evidence, finite positions, corrup
 rejection, compact previews and minimum corpus coverage. Redirect regressions cover
 both response orders so live aliases cannot overwrite atlas positions or connections.
 
-382 tests in 27 files pass. Svelte check reports zero errors and warnings, and the
+393 tests in 28 files pass. Svelte check reports zero errors and warnings, and the
 Cloudflare production build succeeds with the atlas included in its assets.
 
 Browser checks at 320/375 px and 1,280 px found no horizontal overflow. At 375 px,

@@ -63,7 +63,7 @@ names. Acquisition details and validation are in
 
 ## Validation
 
-382 tests in 27 files pass; Svelte check reports zero errors/warnings and the
+393 tests in 28 files pass; Svelte check reports zero errors/warnings and the
 Cloudflare production build succeeds. New regressions cover image identity and
 fallback geometry, first-hop process ranking and related API semantics, redirect
 merging, true visit order, camera framing/zoom, bounded acquisition and teardown,
