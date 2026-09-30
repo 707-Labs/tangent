@@ -45,7 +45,15 @@ Other scripts: `bun run check` (svelte-check), `bun run test` (vitest), `bun run
    Selection is a softmax-weighted pick among the top scorers, not a robotic argmax.
 4. **Render** — the chosen article's full summary extract leads the card as its hook,
    with a breadcrumb explaining the connection and the image demoted to a small inset.
-   The next few cards are prefetched so scrolling stays smooth.
+   Seed and deliberate-dive cards appear as soon as their summaries arrive; optional
+   full-article imagery does not hold them up. The next few cards are prefetched,
+   and concurrent cache misses share one acquisition within a Worker isolate.
+
+The article reader preserves sources, native media, math, galleries and wide tables.
+See the [renderer coverage matrix](docs/specs/2026-09-30-renderer-audit.md) for the
+22-page corpus, browser checks and remaining limits. Wikipedia's interactive scripts
+are not loaded. [Loading paths](docs/specs/2026-09-29-loading-paths.md) documents the
+request-order changes and their verification; no measured production speedup is claimed.
 
 Engagement (likes, foreground dwell time, clickthroughs) lives in `localStorage`
 and feeds the interest vector. Tunable knobs live in `src/lib/feed/config.ts`.

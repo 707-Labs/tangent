@@ -98,22 +98,24 @@ const refList = (group = '') =>
 	`<li id="cite_note-1"><span class="mw-reference-text">Smith, J. (2019). Octopus cognition.</span></li>` +
 	`</ol></div>`;
 
-describe('sanitizeArticleHtml — footnote pruning', () => {
-	it('drops a pure citation section, heading and list together', () => {
+describe('sanitizeArticleHtml — reference disclosures', () => {
+	it('keeps a pure citation section with its list collapsed', () => {
 		const out = sanitizeArticleHtml(
 			`<section data-mw-section-id="9"><h2 id="References">References</h2>${refList()}</section>`
 		);
-		expect(out).not.toContain('References');
-		expect(out).not.toContain('mw-references-wrap');
-		expect(out).not.toContain('Octopus cognition');
+		expect(out).toContain('References');
+		expect(out).toContain('<details class="wh-sources">');
+		expect(out).toContain('mw-references-wrap');
+		expect(out).toContain('Octopus cognition');
 	});
 
-	it('drops a section whose list sits in the extra {{reflist}} <div> wrapper', () => {
+	it('keeps note anchors inside a collapsed nested reference wrapper', () => {
 		const out = sanitizeArticleHtml(
 			`<section><h2 id="Notes">Notes</h2><span class="mw-empty-elt"></span><div>\n${refList('lower-alpha')}</div></section>`
 		);
-		expect(out).not.toContain('Notes');
-		expect(out).not.toContain('mw-references-wrap');
+		expect(out).toContain('Notes');
+		expect(out).toContain('<details class="wh-sources">');
+		expect(out).toContain('mw-references-wrap');
 	});
 
 	it('keeps a references section that also holds a bibliography', () => {
@@ -125,8 +127,8 @@ describe('sanitizeArticleHtml — footnote pruning', () => {
 		expect(out).toContain('References'); // heading survives…
 		expect(out).toContain('Works cited'); // …because the bibliography remains
 		expect(out).toContain('Bell, J. S. (1966).');
-		expect(out).not.toContain('mw-references-wrap'); // but the inline citation list is gone
-		expect(out).not.toContain('Octopus cognition');
+		expect(out).toContain('mw-references-wrap'); // citation text remains available
+		expect(out).toContain('Octopus cognition');
 	});
 
 	it('keeps a references section that is itself a {{refbegin}} bibliography', () => {

@@ -6,7 +6,7 @@ const WIKI = 'https://en.wikipedia.org';
 /**
  * Turn Wikipedia's Parsoid HTML into something compact to drop inline with {@html}:
  * structural transforms (heading demotion, infobox/quick-facts wrapping, table tagging,
- * reference pruning) plus a regex pass that sheds bulky Parsoid metadata and makes a
+ * reference disclosures) plus a regex pass that sheds bulky Parsoid metadata and makes a
  * first cut at executable surfaces.
  *
  * NOT the security boundary on its own. The regex executable-surface strip here is a
@@ -69,9 +69,9 @@ export function sanitizeArticleHtml(raw: string): string {
 	// Rewrite relative URLs to absolute so links/images resolve inside our app.
 	html = html
 		.replace(/(href|src|resource)="\.\//g, `$1="${WIKI}/wiki/`)
-		.replace(/(href|src)="\/w\//g, `$1="${WIKI}/w/`)
-		.replace(/(href|src)="\/wiki\//g, `$1="${WIKI}/wiki/`)
-		.replace(/(href|src)="\/\//g, '$1="https://')
+		.replace(/(href|src|poster)="\/w\//g, `$1="${WIKI}/w/`)
+		.replace(/(href|src|poster)="\/wiki\//g, `$1="${WIKI}/wiki/`)
+		.replace(/(href|src|poster)="\/\//g, '$1="https://')
 		.replace(
 			/srcset="([^"]*)"/g,
 			(_m, set: string) => `srcset="${set.replace(/(^|,\s*)\/\//g, '$1https://')}"`
@@ -89,10 +89,19 @@ export function sanitizeArticleHtml(raw: string): string {
 		(_m, slash: string, level: string) => `<${slash}h${Number(level) + 1}`
 	);
 
-	// Strip the citation apparatus and drop any section it leaves hollow (see below).
-	// Done before infobox wrapping so that pass scans a far smaller document — the
-	// reference list alone can be several hundred KB.
-	html = pruneReferenceSections(html);
+	// Keep citation text and stable note ids accessible without overwhelming the prose.
+	html = discloseReferences(html);
+
+	// Media must use native controls without fetching recordings before playback.
+	html = html.replace(/<(audio|video)\b([^>]*)>/gi, (_m, tag: string, attrs: string) => {
+		const clean = attrs.replace(/\s(?:autoplay|preload|controls)(?:=(?:"[^"]*"|'[^']*'|[^\s>]+))?/gi, '');
+		return `<${tag}${clean} controls preload="none">`;
+	});
+
+	// Image-map coordinates are in the image's original rendered pixels. A scroller
+	// preserves those coordinates instead of shrinking the image away from its areas.
+	html = html.replace(/<img\b[^>]*\busemap="[^"]*"[^>]*>/gi,
+		(img) => `<span class="wh-imagemap">${img}</span>`);
 
 	// Tag/wrap the table-shaped reflows whose mobile layout needs a signal CSS can't derive on
 	// its own — which cell is the sticky label, where the scrollable chart is, whether a grid is
@@ -202,23 +211,6 @@ function matchingTagEnd(html: string, start: number, tag: string): number {
 		}
 	}
 	return -1;
-}
-
-/** Remove every `<tag …>…</tag>` whose open tag matches `openRe`, balancing nesting. */
-function removeBlocks(html: string, openRe: RegExp, tag: string): string {
-	const out: string[] = [];
-	let cursor = 0;
-	for (let m = openRe.exec(html); m; m = openRe.exec(html)) {
-		const start = m.index;
-		if (start < cursor) continue; // already inside a removed block
-		const end = matchingTagEnd(html, start, tag);
-		if (end === -1) continue; // malformed — leave untouched
-		out.push(html.slice(cursor, start));
-		cursor = end;
-		openRe.lastIndex = end;
-	}
-	out.push(html.slice(cursor));
-	return out.join('');
 }
 
 /**
@@ -376,77 +368,20 @@ function isWideGridTable(body: string): boolean {
 	return cols[Math.floor(cols.length / 2)] >= 6;
 }
 
-/**
- * The reader deliberately drops Wikipedia's footnote apparatus — the inline `[1]`
- * markers (hidden in CSS) and the citation list — as noise that linearizes into a
- * wall of plumbing in our single column. But the list lived under its own section
- * heading ("References", "Notes", "Footnotes"), so hiding only the list left the
- * heading dangling over an empty body. Here we (1) delete the citation apparatus
- * outright — which also sheds the bulkiest part of the payload, the list itself —
- * and (2) remove any section that is now hollow.
- *
- * Sections that pair a citation list with real content survive: a "References"
- * section whose body also holds a `{{refbegin}}`/`{{div-col}}` bibliography, or a
- * nested "Works cited" subsection, keeps that content (now under a non-empty
- * heading). Plain content sections — "See also", "External links", "Further
- * reading" — carry no apparatus and are untouched.
- */
-function pruneReferenceSections(html: string): string {
-	// (1) Delete the apparatus wherever it appears. Wrap first (it contains the <ol>),
-	// then any standalone reflist/citation list left by other templates.
-	html = removeBlocks(html, /<div\b[^>]*\bclass="[^"]*\bmw-references-wrap\b[^"]*"[^>]*>/gi, 'div');
-	html = removeBlocks(html, /<div\b[^>]*\bclass="[^"]*\breflist\b[^"]*"[^>]*>/gi, 'div');
-	html = removeBlocks(html, /<ol\b[^>]*\bclass="[^"]*\breferences\b[^"]*"[^>]*>/gi, 'ol');
-
-	// (2) Drop sections the apparatus removal hollowed out. Leaves first (fixpoint), so a
-	// parent that empties only once its empty children are gone is caught on a later pass.
-	for (;;) {
-		const next = removeEmptyLeafSections(html);
-		if (next === html) break;
-		html = next;
-	}
-	return html;
-}
-
-/** A section's body counts as empty once headings and empty wrappers are shed and no
- *  text or content-bearing element remains (so a hidden citation list reads as empty,
- *  but a bibliography list or stray prose does not). */
-function isEmptySectionBody(inner: string): boolean {
-	let body = inner.replace(/<h[1-6]\b[^>]*>[\s\S]*?<\/h[1-6]>/gi, '');
-	for (let prev = ''; prev !== body; ) {
-		prev = body;
-		body = body.replace(/<(div|span|p)\b[^>]*>\s*<\/\1>/gi, '');
-	}
-	if (
-		/<(img|figure|table|ul|ol|dl|li|blockquote|a|cite|b|i|em|strong|sub|sup|hr|dt|dd|tr|td|th|math|audio|video|svg|details|pre|code|caption)\b/i.test(
-			body
-		)
-	)
-		return false;
-	return !/\S/.test(body.replace(/<[^>]+>/g, ''));
-}
-
-/** One pass: remove every leaf `<section>` (no nested section) whose body is empty. */
-function removeEmptyLeafSections(html: string): string {
-	const OPEN = /<section\b[^>]*>/gi;
+/** Preserve complete citation lists, including note anchors and backlinks, in disclosures.
+ * Match the outermost reference container so nested reflist/wrap/ol nodes are not
+ * wrapped repeatedly. A bibliography outside the apparatus stays ordinary content. */
+function discloseReferences(html: string): string {
+	const open = /<(div|ol)\b[^>]*\bclass="(?:[^"]*\s)?(?:mw-references-wrap|reflist|references)(?=\s|")[^"]*"[^>]*>/gi;
 	const out: string[] = [];
 	let cursor = 0;
-	for (let m = OPEN.exec(html); m; m = OPEN.exec(html)) {
-		const start = m.index;
-		if (start < cursor) continue;
-		const end = matchingTagEnd(html, start, 'section');
+	for (let match = open.exec(html); match; match = open.exec(html)) {
+		const end = matchingTagEnd(html, match.index, match[1]);
 		if (end === -1) continue;
-		const inner = html.slice(start + m[0].length, end - '</section>'.length);
-		if (/<section\b/i.test(inner)) {
-			// Not a leaf — descend so nested empty sections are still reached this pass.
-			OPEN.lastIndex = start + m[0].length;
-			continue;
-		}
-		if (isEmptySectionBody(inner)) {
-			out.push(html.slice(cursor, start));
-			cursor = end;
-		}
-		OPEN.lastIndex = end;
+		out.push(html.slice(cursor, match.index), '<details class="wh-sources"><summary>Sources</summary>',
+			html.slice(match.index, end), '</details>');
+		cursor = end;
+		open.lastIndex = end;
 	}
 	out.push(html.slice(cursor));
 	return out.join('');
@@ -528,7 +463,7 @@ const RewriterCtor = (globalThis as { HTMLRewriter?: new () => Rewriter }).HTMLR
 
 const EVENT_HANDLER_ATTR = /^on[a-z]/i;
 const DROP_ATTRS = new Set(['srcdoc', 'formaction', 'ping']);
-const URL_ATTRS = new Set(['href', 'src', 'xlink:href', 'action', 'data']);
+const URL_ATTRS = new Set(['href', 'src', 'poster', 'xlink:href', 'action', 'data']);
 const DROP_ELEMENTS = 'script, style, link, base, iframe, object, embed, meta';
 
 /**
