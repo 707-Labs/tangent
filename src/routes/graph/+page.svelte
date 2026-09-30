@@ -1,773 +1,443 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount, onDestroy, untrack } from 'svelte';
 	import { page } from '$app/state';
-	import { fade } from 'svelte/transition';
-	import { cubicOut } from 'svelte/easing';
-	import { Plus, Minus, Scan } from '@lucide/svelte';
-	import type { Candidate, Thumbnail } from '$lib/wikipedia/types';
-	import {
-		classifyDirection,
-		eraBuckets,
-		placeTokens,
-		type DirectionContext
-	} from '$lib/feed/directions';
-	import { categoryTokenSet } from '$lib/feed/tokens';
+	import { Plus, Minus, Scan, X, Search, ArrowRight, RotateCw } from '@lucide/svelte';
+	import type { Article, SearchResult } from '$lib/wikipedia/types';
+	import { reader } from '$lib/reader/readerState.svelte';
+	import ArticleReader from '$lib/components/ArticleReader.svelte';
 	import { loadTrail, chainTip } from '$lib/feed/trail';
-	import RelationIcon from '$lib/components/RelationIcon.svelte';
+	import { graphAcquisitions } from '$lib/graph/acquire';
+	import { REGIONS, initialWorld, importNode, canonicalizeNode, appendVisit, addNeighborhood, project, visibleNodes, visibleLabels, overviewCamera, centeredCamera, zoomCamera, type Camera, type WorldNode } from '$lib/graph/world';
 
-	/**
-	 * /graph — the explorable knowledge canvas.
-	 *
-	 * A Figma-style infinite canvas: articles are nodes in a persistent world.
-	 * Tapping a node expands its real candidate pool (the same /api/links the
-	 * feed uses) radially away from its parent; visited neighborhoods stay where
-	 * they are, so exploring builds a map instead of replacing a diagram.
-	 * Already-charted articles get cross-edges instead of duplicates — the
-	 * moment the rabbit hole visibly loops back on itself.
-	 *
-	 * Camera: scroll / two-finger pans, ctrl-or-cmd+scroll and pinch zoom to the
-	 * cursor, drag pans, +/−/fit controls for discoverability. Labels fade out
-	 * when zoomed far enough that only the constellation matters.
-	 */
-
-	/** What the graph knows about any node — a candidate, or a bare title. */
-	interface NodeInfo {
-		title: string;
-		description: string | null;
-		thumbnail: Thumbnail | null;
-		categories: string[];
-	}
-
-	type Sector = 'wild' | 'place' | 'deeper' | 'theme' | 'era';
-
-	/** Semantic order for sectors; each expansion deals its fan among the sectors
-	 *  that actually have members. */
-	const SECTORS: readonly { id: Sector; label: string }[] = [
-		{ id: 'wild', label: 'Wild leap' },
-		{ id: 'place', label: 'Same place, another time' },
-		{ id: 'deeper', label: 'Deeper in' },
-		{ id: 'theme', label: 'Pulling the thread' },
-		{ id: 'era', label: 'Meanwhile, elsewhere' }
-	];
-
-	const PER_SECTOR_CAP = 4;
-	/** World-unit fan radius for an expansion (outer ring; inner is 0.75×). */
-	const RADIUS = 195;
-	/** Nodes closer than this in world units are a collision — nudge outward. */
-	const MIN_GAP = 80;
-	/** Cap on cross-edges recorded per expansion, so a hub article doesn't
-	 *  spider-web the whole canvas at once. */
-	const CROSS_EDGE_CAP = 6;
-
-	interface WorldNode {
-		key: string;
-		info: NodeInfo;
-		x: number;
-		y: number;
-		parentKey: string | null;
-		sector: Sector | null;
-		expanded: boolean;
-		/** Mount stagger within its expansion. */
-		order: number;
-		/** Sector labels of this node's own expansion, shown only while focused. */
-		rosette?: { id: Sector; label: string; mid: number }[];
-	}
-
-	interface WorldEdge {
-		key: string;
-		from: string;
-		to: string;
-	}
-
-	let nodes = $state<WorldNode[]>([]);
-	let edges = $state<WorldEdge[]>([]);
-	let focusKey = $state<string | null>(null);
-	let visited = $state<string[]>([]);
+	let nodes = $state(initialWorld());
+	let selected = $state<string | null>(null);
+	let trail = $state<string[]>([]);
 	let loading = $state(false);
 	let error = $state<string | null>(null);
-	let stageW = $state(0);
-	let stageH = $state(0);
-	let stageEl = $state<HTMLDivElement | null>(null);
+	let article = $state<Article | null>(null);
+	let summaryError = $state(false);
+	let width = $state(0);
+	let height = $state(0);
+	let stage = $state<HTMLDivElement | null>(null);
+	let camera = $state<Camera>({ x: 0, y: 0, k: 0.12 });
+	let animate = $state(false);
+	let dragging = $state(false);
+	let showingOverview = true;
+	let disposed = false;
+	let selectionVersion = 0;
+	const acquisitions = graphAcquisitions();
+	let hoverTimer: ReturnType<typeof setTimeout> | undefined;
+	let idleTimer: ReturnType<typeof setTimeout> | undefined;
+	let motionTimer: ReturnType<typeof setTimeout> | undefined;
+	let prefetchActive = 0;
+	let reducedMotion = false;
+	const aliases = new Map<string, string>();
+	function canonicalTitle(title: string) { return aliases.get(title) ?? title; }
 
-	/** Camera: screen = world × k + (x, y). */
-	let cam = $state({ x: 0, y: 0, k: 1 });
-	/** True while the camera is animating programmatically (focus jump / fit) —
-	 *  gates the CSS transition so interactive pan/zoom stays 1:1. */
-	let camTween = $state(false);
-	let camReady = $state(false);
-	let panning = $state(false);
-
-	const byKey = $derived(new Map(nodes.map((n) => [n.key, n])));
-	const focusNode = $derived(focusKey ? (byKey.get(focusKey) ?? null) : null);
-
-	// Center the seed once the stage has measured itself.
-	$effect(() => {
-		if (!camReady && stageW > 0 && stageH > 0) {
-			cam = { x: stageW / 2, y: stageH / 2, k: stageW < 480 ? 0.85 : 1 };
-			camReady = true;
+	const byTitle = $derived(new Map(nodes.map((node) => [node.title, node])));
+	const focus = $derived(selected ? byTitle.get(selected) ?? null : null);
+	const viewport = $derived({ width, height });
+	const visible = $derived(visibleNodes(nodes, camera, viewport, selected));
+	const labels = $derived(visibleLabels(visible, camera, selected));
+	const connections = $derived(focus?.neighbors.map((title) => byTitle.get(title)).filter((node): node is WorldNode => !!node) ?? []);
+	const lines = $derived.by(() => {
+		const pairs: { from: WorldNode; to: WorldNode; trail: boolean }[] = [];
+		if (focus) for (const title of focus.neighbors.slice(0, 30)) {
+			const destination = byTitle.get(title);
+			if (destination) pairs.push({ from: focus, to: destination, trail: false });
 		}
+		for (let index = 1; index < trail.length; index++) {
+			const from = byTitle.get(trail[index - 1]);
+			const to = byTitle.get(trail[index]);
+			if (from && to && from !== to) pairs.push({ from, to, trail: true });
+		}
+		return pairs.map((pair) => ({ ...pair, a: project(pair.from, camera), b: project(pair.to, camera) }));
 	});
+	const stars = Array.from({ length: 150 }, (_, index) => ({
+		x: ((index * 7919) % 1000) / 10, y: ((index * 4231) % 1000) / 10,
+		size: index % 5 === 0 ? 2 : 1
+	}));
 
-	function ctxFor(info: NodeInfo): DirectionContext {
-		return {
-			runEras: eraBuckets(info),
-			runPlaces: placeTokens(info),
-			runCategories: categoryTokenSet(info.categories)
-		};
+	function move(next: Camera, smooth = true) {
+		clearTimeout(motionTimer);
+		animate = smooth && !reducedMotion;
+		camera = next;
+		motionTimer = setTimeout(() => { animate = false; }, 320);
+	}
+	function overview() { showingOverview = true; move(overviewCamera(viewport)); }
+	function center(node: WorldNode, zoom = Math.max(0.75, camera.k)) {
+		showingOverview = false;
+		const k = Math.min(1.3, zoom);
+		move(centeredCamera(node, viewport, k));
+	}
+	function zoom(factor: number, x = width / 2, y = height / 2) {
+		move(zoomCamera(camera, factor, { x, y }), false);
 	}
 
-	/** classifyDirection folds "shares both era and place" and "shares nothing"
-	 *  into the same null — the graph wants them apart: the former is the
-	 *  neighborhood (deeper), the latter a genuine wild leap. */
-	function sectorOf(c: Candidate, dctx: DirectionContext): Sector {
-		const dir = classifyDirection(c, dctx);
-		if (dir !== null) return dir;
-		const sharesEra = [...eraBuckets(c)].some((e) => dctx.runEras.has(e));
-		const sharesPlace = [...placeTokens(c)].some((p) => dctx.runPlaces.has(p));
-		return sharesEra && sharesPlace ? 'deeper' : 'wild';
+	// Only two speculative acquisitions may be active. Hover and one idle pair share the budget.
+	function prefetch(title: string) {
+		if (disposed || prefetchActive >= 2 || acquisitions.links.peek(title)) return;
+		prefetchActive++;
+		void acquisitions.links.get(title).catch(() => {}).finally(() => { prefetchActive--; });
 	}
-
-	function candToNode(c: Candidate): NodeInfo {
-		return {
-			title: c.title,
-			description: c.description,
-			thumbnail: c.thumbnail,
-			categories: c.categories
-		};
+	function hover(title: string) {
+		clearTimeout(hoverTimer);
+		hoverTimer = setTimeout(() => prefetch(title), 420);
 	}
-
-	function bare(title: string): NodeInfo {
-		return { title, description: null, thumbnail: null, categories: [] };
-	}
-
-	function polarFrom(ox: number, oy: number, angleDeg: number, r: number): { x: number; y: number } {
-		const rad = (angleDeg * Math.PI) / 180;
-		return { x: ox + r * Math.cos(rad), y: oy + r * Math.sin(rad) };
-	}
-
-	/** First collision-free spot along the angle, stepping outward. */
-	function findSpot(
-		ox: number,
-		oy: number,
-		angleDeg: number,
-		r0: number,
-		taken: { x: number; y: number }[]
-	): { x: number; y: number } {
-		let spot = polarFrom(ox, oy, angleDeg, r0);
-		for (const bump of [0, 60, 120, 180]) {
-			spot = polarFrom(ox, oy, angleDeg, r0 + bump);
-			if (!taken.some((t) => Math.hypot(t.x - spot.x, t.y - spot.y) < MIN_GAP)) break;
-		}
-		return spot;
-	}
-
-	function hasEdge(a: string, b: string): boolean {
-		return edges.some((e) => (e.from === a && e.to === b) || (e.from === b && e.to === a));
-	}
-
-	/** Lay a node's fresh candidates out around it in world space. Children fan
-	 *  away from the grandparent so growth pushes outward; the seed gets the full
-	 *  circle. Titles already on the canvas become cross-edges, not duplicates. */
-	function placeChildren(parentKey: string, candidates: Candidate[]) {
-		const parent = byKey.get(parentKey);
-		if (!parent) return;
-		const dctx = ctxFor(parent.info);
-
-		const onCanvas = new Set(nodes.map((n) => n.key));
-		const fresh: Candidate[] = [];
-		const crossEdges: WorldEdge[] = [];
-		for (const c of candidates) {
-			if (c.title === parentKey) continue;
-			if (onCanvas.has(c.title)) {
-				if (crossEdges.length < CROSS_EDGE_CAP && !hasEdge(parentKey, c.title)) {
-					crossEdges.push({ key: `${parentKey}→${c.title}`, from: parentKey, to: c.title });
-				}
-				continue;
-			}
-			fresh.push(c);
-		}
-
-		const bySector = new Map<Sector, Candidate[]>();
-		for (const c of fresh) {
-			const s = sectorOf(c, dctx);
-			bySector.set(s, [...(bySector.get(s) ?? []), c]);
-		}
-		const active = SECTORS.filter((s) => bySector.has(s.id));
-
-		const grandparent = parent.parentKey ? byKey.get(parent.parentKey) : null;
-		const outAngle = grandparent
-			? (Math.atan2(parent.y - grandparent.y, parent.x - grandparent.x) * 180) / Math.PI
-			: -90;
-		const span = grandparent ? 260 : 360;
-		const start = outAngle - span / 2;
-		const slice = active.length > 0 ? span / active.length : span;
-		const cap = active.length === 1 ? 8 : PER_SECTOR_CAP;
-
-		let ring = 0;
-		let order = 0;
-		const placed: WorldNode[] = [];
-		const newEdges: WorldEdge[] = [...crossEdges];
-		const rosette = active.map((s, si) => ({
-			id: s.id,
-			label: s.label,
-			mid: start + slice * (si + 0.5)
-		}));
-		active.forEach((s, si) => {
-			const list = (bySector.get(s.id) ?? []).slice(0, cap);
-			const mid = start + slice * (si + 0.5);
-			const spread =
-				active.length === 1 ? Math.min(300, span * 0.85) : Math.min(64, slice * 0.72);
-			list.forEach((c, i) => {
-				const t = list.length === 1 ? 0 : i / (list.length - 1) - 0.5;
-				const angle = mid + t * spread;
-				// Ring parity runs across sector boundaries so angular neighbors sit at
-				// different radii and their labels stay apart.
-				const r0 = ring++ % 2 === 0 ? RADIUS : RADIUS * 0.75;
-				const spot = findSpot(parent.x, parent.y, angle, r0, [...nodes, ...placed]);
-				placed.push({
-					key: c.title,
-					info: candToNode(c),
-					x: spot.x,
-					y: spot.y,
-					parentKey,
-					sector: s.id,
-					expanded: false,
-					order: order++
-				});
-				newEdges.push({ key: `${parentKey}→${c.title}`, from: parentKey, to: c.title });
-			});
-		});
-
-		nodes = [
-			...nodes.map((n) =>
-				n.key === parentKey
-					? { ...n, expanded: candidates.length > 0 ? true : n.expanded, rosette }
-					: n
-			),
-			...placed
-		];
-		edges = [...edges, ...newEdges];
-	}
-
-	// Monotonic sequence guards stale responses when nodes are tapped in quick succession.
-	let seq = 0;
-
-	/** Focus a node: center the camera on it and, if unexplored, expand its
-	 *  candidate pool in place. An errored expansion stays un-expanded, so
-	 *  tapping again (or Retry) refetches. */
-	async function expand(key: string, recenter = true) {
-		const node = byKey.get(key);
-		if (!node) return;
-		focusKey = key;
-		error = null;
-		if (visited.at(-1) !== key) visited = [...visited, key];
-		if (recenter && camReady) tweenCameraTo(node.x, node.y);
-		if (node.expanded) return;
-
-		const mySeq = ++seq;
+	async function loadSelection(title: string, version: number) {
 		loading = true;
-		try {
-			// Bare nodes (the seed, ladder rungs) hydrate card + categories BEFORE
-			// classification, so the first hop sectors immediately instead of fanning
-			// everything into "wild".
-			const needsHydration = !node.info.thumbnail || node.info.categories.length === 0;
-			const [res] = await Promise.all([
-				fetch(`/api/links?from=${encodeURIComponent(key)}`),
-				needsHydration ? hydrate(key) : Promise.resolve()
-			]);
-			const data = (await res.json()) as { candidates?: Candidate[]; error?: string };
-			if (mySeq !== seq) return;
-			// Lists/indexes make dead-end nodes — the graph wants subjects, not directories.
-			const filtered = (data.candidates ?? []).filter(
-				(c) => !c.isDisambiguation && !/^(Lists?|Timeline|Index|Outline) of /.test(c.title)
-			);
-			if (data.error) {
-				error = 'Wikipedia is being slow.';
-			} else if (filtered.length === 0) {
-				error = 'No links found. Try another article.';
-			} else {
-				placeChildren(key, filtered);
+		error = null;
+		summaryError = false;
+		article = acquisitions.cards.peek(title) ?? null;
+		void acquisitions.cards.get(title).then((value) => {
+			if (disposed || version !== selectionVersion) return;
+			article = value;
+			const previous = canonicalTitle(title);
+			const previousNode = nodes.find((node) => node.title === previous);
+			for (const [alias, destination] of aliases) if (destination === previous) aliases.set(alias, value.title);
+			aliases.set(title, value.title);
+			aliases.set(previous, value.title);
+			nodes = canonicalizeNode(nodes, previous, { title: value.title, description: value.description, thumbnail: value.thumbnail });
+			selected = value.title;
+			const mergedNode = nodes.find((node) => node.title === value.title);
+			// An earlier canonical placement may win a redirect merge. Keep selection in
+			// view only when it actually moved; ordinary metadata never resets the camera.
+			if (previousNode && mergedNode && (previousNode.x !== mergedNode.x || previousNode.y !== mergedNode.y)) {
+				move(centeredCamera(mergedNode, viewport, camera.k));
 			}
-		} catch {
-			if (mySeq === seq) error = 'Wikipedia is being slow.';
+			trail = trail.reduce<string[]>((visits, visit) => appendVisit(visits, canonicalTitle(visit)), []);
+		}).catch(() => { if (!disposed && version === selectionVersion) summaryError = true; });
+		try {
+			const candidates = await acquisitions.links.get(title);
+			if (disposed || version !== selectionVersion) return;
+			nodes = addNeighborhood(nodes, canonicalTitle(title), candidates.map((candidate) => ({ ...candidate, title: canonicalTitle(candidate.title) })));
+			clearTimeout(idleTimer);
+			idleTimer = setTimeout(() => {
+				if (version !== selectionVersion || disposed) return;
+				for (const candidate of candidates.slice(0, 2)) prefetch(candidate.title);
+			}, 1400);
+		} catch (failure) {
+			if (!disposed && version === selectionVersion) error = failure instanceof Error ? failure.message : 'Connections unavailable. Try again.';
 		} finally {
-			if (mySeq === seq) loading = false;
+			if (!disposed && version === selectionVersion) loading = false;
 		}
 	}
-
-	/** Fill in a bare node's card and categories from /api/card. */
-	async function hydrate(key: string) {
-		try {
-			const res = await fetch(`/api/card?title=${encodeURIComponent(key)}&categories=1`);
-			const data = (await res.json()) as {
-				article: { title: string; description: string | null; thumbnail: Thumbnail | null } | null;
-				categories?: string[];
-			};
-			const article = data.article;
-			if (!article) return;
-			nodes = nodes.map((n) =>
-				n.key === key
-					? {
-							...n,
-							info: {
-								...n.info,
-								description: n.info.description ?? article.description,
-								thumbnail: n.info.thumbnail ?? article.thumbnail,
-								categories:
-									n.info.categories.length > 0 ? n.info.categories : (data.categories ?? [])
-							}
-						}
-					: n
-			);
-		} catch {
-			// Cosmetic enrichment only — the graph works from the title alone.
-		}
+	function select(info: SearchResult | WorldNode) {
+		info = { ...info, title: canonicalTitle(info.title) };
+		reader.close();
+		clearTimeout(idleTimer);
+		nodes = importNode(nodes, info);
+		selected = info.title;
+		trail = appendVisit(trail, info.title);
+		const node = nodes.find((item) => item.title === info.title)!;
+		center(node);
+		searchOpen = false;
+		void loadSelection(info.title, ++selectionVersion);
+	}
+	function dive(title: string) {
+		title = canonicalTitle(title);
+		reader.close();
+		nodes = importNode(nodes, { title, description: null, thumbnail: null }, focus ?? undefined);
+		select(nodes.find((node) => node.title === title)!);
+	}
+	function closeSelection() {
+		selectionVersion++;
+		selected = null;
+		reader.close();
+		loading = false;
+		clearTimeout(idleTimer);
 	}
 
-	function retry() {
-		if (focusKey) expand(focusKey, false);
-	}
-
-	/** A ladder rung ("1940s", "Belgium") joins the canvas above the focused
-	 *  node, connected to it — zooming out grows the map upward. */
-	function enterRung(title: string) {
-		if (byKey.has(title)) {
-			expand(title);
-			return;
-		}
-		const f = focusNode;
-		const spot = f
-			? findSpot(f.x, f.y, -90, RADIUS * 1.25, nodes)
-			: { x: 0, y: 0 };
-		nodes = [
-			...nodes,
-			{ key: title, info: bare(title), x: spot.x, y: spot.y, parentKey: f?.key ?? null, sector: null, expanded: false, order: 0 }
-		];
-		if (f && !hasEdge(f.key, title)) {
-			edges = [...edges, { key: `${f.key}→${title}`, from: f.key, to: title }];
-		}
-		expand(title);
-	}
-
-	/** The focused node's own era/place tokens, as navigable articles — the
-	 *  zoom-out ladder ("1940s", "Belgium", "Europe" are all real pages). */
-	const ladder = $derived.by<string[]>(() => {
-		if (!focusNode) return [];
-		const rungs: string[] = [];
-		for (const e of eraBuckets(focusNode.info)) rungs.push(eraLabel(e));
-		for (const p of placeTokens(focusNode.info)) rungs.push(prettyPlace(p));
-		// A place's own name shows up in its tokens — a self-rung isn't a zoom-out.
-		const self = focusNode.key.toLowerCase();
-		return rungs.filter((r) => r.toLowerCase() !== self).slice(0, 5);
+	let query = $state('');
+	let results = $state<SearchResult[]>([]);
+	let resultsQuery = $state('');
+	let searching = $state(false);
+	let searchError = $state(false);
+	let searchOpen = $state(false);
+	let highlighted = $state(-1);
+	const currentResults = $derived(resultsQuery === query.trim() ? results : []);
+	$effect(() => {
+		if (searchOpen && highlighted >= 0) document.getElementById(`map-result-${highlighted}`)?.scrollIntoView({ block: 'nearest' });
 	});
-
-	function prettyPlace(token: string): string {
-		if (token === 'ussr') return 'USSR';
-		return token.replace(/\b[a-z]/g, (ch) => ch.toUpperCase());
-	}
-
-	function ordinal(n: number): string {
-		const v = n % 100;
-		if (v >= 11 && v <= 13) return `${n}th`;
-		return `${n}${['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`;
-	}
-
-	function eraLabel(bucket: string): string {
-		const m = bucket.match(/^(\d+)c(-bc)?$/);
-		return m ? `${ordinal(Number(m[1]))} century${m[2] ? ' BC' : ''}` : bucket;
-	}
-
-	// ---------- camera ----------
-
-	let tweenTimer: ReturnType<typeof setTimeout> | undefined;
-
-	function tweenCameraTo(wx: number, wy: number, kOverride?: number) {
-		// Reading an expansion at 0.3× is squinting — zoom back in for the jump.
-		const k = kOverride ?? (cam.k < 0.7 ? 1 : cam.k);
-		camTween = true;
-		cam = { x: stageW / 2 - wx * k, y: stageH / 2 - wy * k, k };
-		clearTimeout(tweenTimer);
-		tweenTimer = setTimeout(() => (camTween = false), 550);
-	}
-
-	function zoomAbout(sx: number, sy: number, factor: number) {
-		const k = Math.min(2.5, Math.max(0.25, cam.k * factor));
-		const f = k / cam.k;
-		cam = { x: sx - (sx - cam.x) * f, y: sy - (sy - cam.y) * f, k };
-	}
-
-	function zoomButtons(factor: number) {
-		camTween = false;
-		zoomAbout(stageW / 2, stageH / 2, factor);
-	}
-
-	function fitAll() {
-		if (nodes.length === 0) return;
-		const pad = 150;
-		const xs = nodes.map((n) => n.x);
-		const ys = nodes.map((n) => n.y);
-		const minX = Math.min(...xs) - pad;
-		const maxX = Math.max(...xs) + pad;
-		const minY = Math.min(...ys) - pad;
-		const maxY = Math.max(...ys) + pad;
-		const k = Math.min(
-			1.2,
-			Math.max(0.25, Math.min(stageW / (maxX - minX), stageH / (maxY - minY)))
-		);
-		camTween = true;
-		cam = {
-			x: stageW / 2 - ((minX + maxX) / 2) * k,
-			y: stageH / 2 - ((minY + maxY) / 2) * k,
-			k
-		};
-		clearTimeout(tweenTimer);
-		tweenTimer = setTimeout(() => (camTween = false), 550);
-	}
-
-	// Figma semantics: plain scroll pans, ctrl-or-cmd+scroll (and trackpad
-	// pinch, which browsers report as ctrl+wheel) zooms to the cursor.
-	function onWheel(e: WheelEvent) {
-		e.preventDefault();
-		camTween = false;
-		if (e.ctrlKey || e.metaKey) {
-			const rect = stageEl?.getBoundingClientRect();
-			if (!rect) return;
-			zoomAbout(e.clientX - rect.left, e.clientY - rect.top, Math.exp(-e.deltaY * 0.01));
-		} else {
-			cam = { ...cam, x: cam.x - e.deltaX, y: cam.y - e.deltaY };
-		}
-	}
-
-	// Drag pans; two pointers pinch. No pointer capture — capture would retarget
-	// the click away from node buttons. Window listeners attach per-drag instead,
-	// and dragDist suppresses the click that follows a real pan.
-	const pointers = new Map<number, { x: number; y: number }>();
-	let dragDist = 0;
-
-	function onPointerDown(e: PointerEvent) {
-		if (e.button !== 0) return;
-		camTween = false;
-		pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-		if (pointers.size === 1) {
-			dragDist = 0;
-			panning = true;
-			window.addEventListener('pointermove', onPointerMove);
-			window.addEventListener('pointerup', onPointerUp);
-			window.addEventListener('pointercancel', onPointerUp);
-		}
-	}
-
-	function onPointerMove(e: PointerEvent) {
-		const prev = pointers.get(e.pointerId);
-		if (!prev) return;
-		const cur = { x: e.clientX, y: e.clientY };
-		if (pointers.size === 1) {
-			cam = { ...cam, x: cam.x + cur.x - prev.x, y: cam.y + cur.y - prev.y };
-			dragDist += Math.hypot(cur.x - prev.x, cur.y - prev.y);
-		} else {
-			const other = [...pointers.entries()].find(([id]) => id !== e.pointerId)?.[1];
-			if (other) {
-				const rect = stageEl?.getBoundingClientRect();
-				const d0 = Math.hypot(prev.x - other.x, prev.y - other.y);
-				const d1 = Math.hypot(cur.x - other.x, cur.y - other.y);
-				if (rect && d0 > 0) {
-					zoomAbout(
-						(cur.x + other.x) / 2 - rect.left,
-						(cur.y + other.y) / 2 - rect.top,
-						d1 / d0
-					);
-				}
-				dragDist += 10;
-			}
-		}
-		pointers.set(e.pointerId, cur);
-	}
-
-	function onPointerUp(e: PointerEvent) {
-		pointers.delete(e.pointerId);
-		if (pointers.size === 0) {
-			panning = false;
-			window.removeEventListener('pointermove', onPointerMove);
-			window.removeEventListener('pointerup', onPointerUp);
-			window.removeEventListener('pointercancel', onPointerUp);
-			// Reset AFTER the click this pointerup composes has been dispatched,
-			// so onNodeClick still sees the drag distance.
-			setTimeout(() => (dragDist = 0), 0);
-		}
-	}
-
-	function onNodeClick(key: string) {
-		if (dragDist > 6) return;
-		expand(key);
-	}
-
-	onDestroy(() => {
-		window.removeEventListener('pointermove', onPointerMove);
-		window.removeEventListener('pointerup', onPointerUp);
-		window.removeEventListener('pointercancel', onPointerUp);
-		clearTimeout(tweenTimer);
+	$effect(() => {
+		const value = query.trim();
+		results = [];
+		resultsQuery = '';
+		highlighted = -1;
+		searchError = false;
+		if (value.length < 2) { searching = false; return; }
+		const controller = new AbortController();
+		searching = true;
+		const timer = setTimeout(async () => {
+			try {
+				const response = await fetch(`/api/search?q=${encodeURIComponent(value)}`, { signal: controller.signal });
+				if (!response.ok) throw new Error('Search unavailable');
+				const payload = await response.json() as { results: SearchResult[] };
+				if (controller.signal.aborted) return;
+				results = payload.results;
+				resultsQuery = value;
+			} catch {
+				if (!controller.signal.aborted) searchError = true;
+			} finally { if (!controller.signal.aborted) searching = false; }
+		}, 230);
+		return () => { clearTimeout(timer); controller.abort(); };
 	});
-
-	// ---------- transitions ----------
-
-	/** New nodes fly outward from their parent; the seed just fades in. */
-	function flyIn(_el: Element, { dx, dy, delay = 0 }: { dx: number; dy: number; delay?: number }) {
-		return {
-			delay,
-			duration: 500,
-			easing: cubicOut,
-			css: (t: number, u: number) =>
-				`transform: translate(-50%, -50%) translate(${u * dx}px, ${u * dy}px); opacity: ${t}`
-		};
+	function submitSearch(event: SubmitEvent) {
+		event.preventDefault();
+		const result = currentResults[highlighted >= 0 ? highlighted : 0];
+		// Use actual search results; don't invent a clickable article from arbitrary text.
+		if (result) select(result);
+		else searchOpen = true;
 	}
 
-	function growEdge(_el: Element, { len, delay = 0 }: { len: number; delay?: number }) {
-		return { delay, duration: 500, easing: cubicOut, css: (t: number) => `width: ${t * len}px` };
+	interface Pointer { x: number; y: number }
+	const pointers = new Map<number, Pointer>();
+	let pinchDistance = 0;
+	let moved = false;
+	let blockClickUntil = 0;
+	function pointerDown(event: PointerEvent) {
+		if (event.button !== 0 || (event.target as HTMLElement).closest('.map-overlay')) return;
+		pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+		moved = false;
+		pinchDistance = 0;
+		// Node buttons retain ordinary clicks; capture only background drags initially.
+		if (!(event.target as HTMLElement).closest('[data-node]')) stage?.setPointerCapture(event.pointerId);
 	}
-
+	function pointerMove(event: PointerEvent) {
+		const prior = pointers.get(event.pointerId);
+		if (!prior || !stage) return;
+		const dx = event.clientX - prior.x;
+		const dy = event.clientY - prior.y;
+		if (Math.hypot(dx, dy) > 2) {
+			moved = true;
+			dragging = true;
+			stage.setPointerCapture(event.pointerId);
+		}
+		pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+		const active = [...pointers.values()];
+		if (active.length === 2) {
+			const distance = Math.hypot(active[0].x - active[1].x, active[0].y - active[1].y);
+			const rect = stage.getBoundingClientRect();
+			if (pinchDistance > 0) zoom(distance / pinchDistance, (active[0].x + active[1].x) / 2 - rect.left, (active[0].y + active[1].y) / 2 - rect.top);
+			pinchDistance = distance;
+		} else { move({ ...camera, x: camera.x + dx, y: camera.y + dy }, false); }
+	}
+	function pointerUp(event: PointerEvent) {
+		pointers.delete(event.pointerId);
+		pinchDistance = 0;
+		if (moved) blockClickUntil = performance.now() + 180;
+		if (pointers.size === 0) dragging = false;
+	}
+	function wheel(event: WheelEvent) {
+		if ((event.target as HTMLElement).closest('.map-overlay')) return;
+		event.preventDefault();
+		const rect = stage!.getBoundingClientRect();
+		if (event.ctrlKey || event.metaKey) zoom(Math.exp(-event.deltaY * 0.008), event.clientX - rect.left, event.clientY - rect.top);
+		else move({ ...camera, x: camera.x - event.deltaX, y: camera.y - event.deltaY }, false);
+	}
+	function keyboard(event: KeyboardEvent) {
+		if ((event.target as HTMLElement).closest('input, button:not(.map-navigation), a, .map-overlay')) return;
+		const offsets: Record<string, [number, number]> = { ArrowLeft: [90, 0], ArrowRight: [-90, 0], ArrowUp: [0, 90], ArrowDown: [0, -90] };
+		if (offsets[event.key]) { event.preventDefault(); const [x, y] = offsets[event.key]; move({ ...camera, x: camera.x + x, y: camera.y + y }, false); }
+		else if (event.key === '+' || event.key === '=') { event.preventDefault(); zoom(1.35); }
+		else if (event.key === '-') { event.preventDefault(); zoom(1 / 1.35); }
+		else if (event.key === 'Home' || event.key === '0') { event.preventDefault(); overview(); }
+		else if (event.key === 'Escape') closeSelection();
+	}
 	onMount(() => {
-		// Seed priority: explicit ?seed= -> the feed's live chain tip (persisted
-		// trail) -> the house default. The nav affordance is a plain link, so
-		// entering mid-feed opens the map of where you already are.
-		const seedTitle =
-			page.url.searchParams.get('seed')?.trim() ||
-			chainTip(loadTrail()?.trail ?? [])?.title ||
-			'Battle of the Bulge';
-		nodes = [
-			{ key: seedTitle, info: bare(seedTitle), x: 0, y: 0, parentKey: null, sector: null, expanded: false, order: 0 }
-		];
-		expand(seedTitle, false);
+		reader.close();
+		reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+		const requested = page.url.searchParams.get('seed');
+		const stored = loadTrail();
+		const title = requested ?? (stored ? chainTip(stored.trail)?.title : null);
+		if (title) select({ title, description: null, thumbnail: null });
+		const target = stage;
+		target?.addEventListener('wheel', wheel, { passive: false });
+		return () => target?.removeEventListener('wheel', wheel);
+	});
+	$effect(() => {
+		const resized = { width, height };
+		if (width <= 0 || height <= 0) return;
+		// Only viewport changes reframe; arriving metadata and camera gestures never do.
+		untrack(() => move(showingOverview || !focus ? overviewCamera(resized) : centeredCamera(focus, resized, camera.k), false));
+	});
+	onDestroy(() => {
+		disposed = true;
+		selectionVersion++;
+		acquisitions.dispose();
+		clearTimeout(hoverTimer);
+		clearTimeout(idleTimer);
+		clearTimeout(motionTimer);
+		reader.close();
 	});
 </script>
 
-<svelte:head>
-	<title>Graph · Tangent</title>
-</svelte:head>
+<svelte:head><title>Article map · Tangent</title></svelte:head>
 
-<div class="relative left-1/2 w-screen -translate-x-1/2">
-	<header class="mx-auto max-w-3xl px-4 text-center">
-		<h1 class="font-display text-2xl font-semibold tracking-tight text-ink">
-			Explore the map
-		</h1>
-		<p class="mx-auto mt-2 max-w-md text-sm leading-relaxed text-muted">
-			Choose an article to see its connections. Drag or scroll to pan,
-			pinch or <kbd class="rounded border border-hair bg-surface px-1 text-[11px]">⌘</kbd>+scroll
-			to zoom.
-		</p>
-
-		{#if ladder.length > 0}
-			<div class="mt-4 flex flex-wrap items-center justify-center gap-2">
-				<span class="text-xs font-medium text-faint">Zoom out</span>
-				{#each ladder as rung (rung)}
-					<button
-						type="button"
-						onclick={() => enterRung(rung)}
-						class="rounded-full border border-hair bg-surface/60 px-3 py-1 text-xs
-							font-medium text-muted transition-all hover:border-accent/50 hover:text-ink
-							active:scale-95"
-					>
-						{rung}
-					</button>
-				{/each}
-			</div>
-		{/if}
-	</header>
-
-	<!-- The pannable viewport. Interactive for pointer pan/zoom only; every node
-	     inside is a real button, so keyboard users tab the graph directly. -->
-	<div
-		bind:this={stageEl}
-		bind:clientWidth={stageW}
-		bind:clientHeight={stageH}
-		role="application"
-		aria-label="Article map. Drag to pan, use the buttons below to zoom"
-		class="relative mt-2 touch-none overflow-hidden select-none
-			{panning ? 'cursor-grabbing' : 'cursor-grab'}"
-		style="height: calc(100dvh - 19rem); min-height: 460px"
-		onpointerdown={onPointerDown}
-		onwheel={onWheel}
-	>
-		<div
-			class="absolute top-0 left-0 {camTween ? 'transition-transform duration-500 ease-out' : ''}
-				{cam.k < 0.55 ? 'labels-hidden' : ''}"
-			style="transform: translate({cam.x}px, {cam.y}px) scale({cam.k}); transform-origin: 0 0"
-		>
-			{#each edges as e (e.key)}
-				{@const a = byKey.get(e.from)}
-				{@const b = byKey.get(e.to)}
-				{#if a && b}
-					{@const len = Math.hypot(b.x - a.x, b.y - a.y) - 30}
-					<div
-						class="absolute origin-left border-t border-hair"
-						style="left: {a.x}px; top: {a.y}px; width: {len}px;
-							transform: rotate({Math.atan2(b.y - a.y, b.x - a.x)}rad); opacity: 0.7"
-						in:growEdge={{ len, delay: 60 }}
-						out:fade={{ duration: 150 }}
-					></div>
-				{/if}
-			{/each}
-
-			{#if focusNode?.rosette}
-				{#each focusNode.rosette as s (s.id)}
-					{@const pos = polarFrom(focusNode.x, focusNode.y, s.mid, RADIUS * 1.7)}
-					<span
-						class="node-label absolute -translate-x-1/2 -translate-y-1/2 rounded-full
-							bg-void/70 px-1.5 text-[11px] font-medium
-							whitespace-nowrap
-							{s.id === 'wild' ? 'text-spark' : 'text-faint'}"
-						style="left: {pos.x}px; top: {pos.y}px"
-						transition:fade={{ duration: 250 }}
-					>
-						{s.label}
-					</span>
-				{/each}
-			{/if}
-
-			{#each nodes as n (n.key)}
-				{@const isFocus = n.key === focusKey}
-				{@const parent = n.parentKey ? byKey.get(n.parentKey) : null}
-				<div
-					class="absolute -translate-x-1/2 -translate-y-1/2"
-					style="left: {n.x}px; top: {n.y}px; z-index: {isFocus ? 10 : 1}"
-					in:flyIn={{
-						dx: (parent?.x ?? n.x) - n.x,
-						dy: (parent?.y ?? n.y) - n.y,
-						delay: 60 + n.order * 35
-					}}
-					out:fade={{ duration: 150 }}
-				>
-					<button
-						type="button"
-						onclick={() => onNodeClick(n.key)}
-						class="group flex flex-col items-center text-center
-							{isFocus ? 'w-44 gap-2' : 'w-24 gap-1.5'}"
-					>
-						{#if n.info.thumbnail}
-							<img
-								src={n.info.thumbnail.source}
-								alt=""
-								loading="lazy"
-								draggable="false"
-								class="rounded-full object-cover transition-all duration-500
-									{isFocus
-									? 'size-16 border-2 border-accent/60 shadow-card'
-									: 'size-11 border border-hair group-hover:border-accent/60 group-active:scale-95'}
-									{isFocus && loading ? 'animate-pulse' : ''}
-									{n.expanded || isFocus ? '' : 'opacity-80'}"
-							/>
-						{:else}
-							<span
-								class="grid place-items-center rounded-full transition-all duration-500
-									{isFocus
-									? 'size-16 border-2 border-accent/60 bg-surface font-display text-xl text-ink shadow-card'
-									: 'size-11 border border-hair bg-surface-2 text-sm text-faint group-hover:border-accent/60 group-active:scale-95'}
-									{isFocus && loading ? 'animate-pulse' : ''}"
-								>{n.key.slice(0, 1)}</span
-							>
-						{/if}
-						<span
-							class="node-label leading-tight transition-all duration-300
-								{isFocus
-								? 'font-display text-base font-semibold text-ink'
-								: 'line-clamp-2 text-xs text-muted group-hover:text-ink'}">{n.key}</span
-						>
-						{#if isFocus && n.info.description}
-							<span class="node-label line-clamp-2 text-xs text-faint">{n.info.description}</span>
-						{/if}
-					</button>
-				</div>
-			{/each}
-		</div>
-
-		<!-- Camera controls: discoverable stand-ins for pinch / modifier-scroll. -->
-		<div class="absolute right-3 bottom-3 z-20 flex flex-col gap-1">
-			<button
-				type="button"
-				onclick={() => zoomButtons(1.3)}
-				aria-label="Zoom in"
-				class="grid size-9 place-items-center rounded-full border border-hair bg-surface/90
-					text-muted transition-colors hover:text-ink"
-			>
-				<Plus class="size-4" aria-hidden="true" />
-			</button>
-			<button
-				type="button"
-				onclick={() => zoomButtons(0.77)}
-				aria-label="Zoom out"
-				class="grid size-9 place-items-center rounded-full border border-hair bg-surface/90
-					text-muted transition-colors hover:text-ink"
-			>
-				<Minus class="size-4" aria-hidden="true" />
-			</button>
-			<button
-				type="button"
-				onclick={fitAll}
-				aria-label="Fit the whole map"
-				class="grid size-9 place-items-center rounded-full border border-hair bg-surface/90
-					text-muted transition-colors hover:text-ink"
-			>
-				<Scan class="size-4" aria-hidden="true" />
-			</button>
-		</div>
-
-		{#if error}
-			<div
-				class="absolute bottom-3 left-1/2 z-20 flex max-w-[90%] -translate-x-1/2 items-center
-					gap-3 rounded-full border border-hair bg-surface/90 px-4 py-2"
-				transition:fade
-			>
-				<span class="text-xs text-muted">{error}</span>
-				<button
-					type="button"
-					onclick={retry}
-					class="text-xs font-medium whitespace-nowrap text-accent transition-colors hover:text-ink"
-				>
-					Retry
-				</button>
-			</div>
-		{/if}
+<!-- A native background control provides keyboard navigation without changing screen-reader modes. -->
+<div bind:this={stage} bind:clientWidth={width} bind:clientHeight={height}
+	class="universe" class:dragging class:animate class:reader-open={reader.isOpen} role="region" aria-label="Article map"
+	onpointerdown={pointerDown} onpointermove={pointerMove} onpointerup={pointerUp} onpointercancel={pointerUp}>
+	<button type="button" class="map-navigation" aria-label="Navigate article map. Arrow keys pan, plus and minus zoom, Home shows all topic regions." onkeydown={keyboard}></button>
+	<div class="starfield" aria-hidden="true">
+		{#each stars as star}<i style="left:{star.x}%;top:{star.y}%;width:{star.size}px;height:{star.size}px"></i>{/each}
 	</div>
-
-	<footer class="mx-auto max-w-3xl px-4 pb-4">
-		{#if visited.length > 0}
-			<div class="flex items-center gap-2">
-				<span class="shrink-0 text-xs font-medium text-faint">Trail</span>
-				<div class="no-scrollbar flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-					{#each visited as title, i (`${i}:${title}`)}
-						{#if i > 0}
-							<span class="shrink-0 text-faint" aria-hidden="true">›</span>
-						{/if}
-						<button
-							type="button"
-							onclick={() => expand(title)}
-							class="shrink-0 rounded-full px-2 py-1 text-xs whitespace-nowrap transition-colors
-								{title === focusKey ? 'font-medium text-ink' : 'text-muted hover:text-ink'}"
-						>
-							{title}
-						</button>
-					{/each}
-				</div>
-				{#if focusKey}
-					<a
-						href={`/?seed=${encodeURIComponent(focusKey)}`}
-						class="inline-flex shrink-0 items-center gap-1.5 rounded-full border
-							border-spark/30 bg-spark/5 px-3 py-1.5 text-xs font-medium text-spark
-							transition-all hover:bg-spark/10 active:scale-95"
-					>
-						<RelationIcon relation="dive" class="size-3.5" />
-						Start the feed here
-					</a>
-				{/if}
-			</div>
+	<svg class="connections" width={width} height={height} aria-hidden="true">
+		{#each lines as line}<line x1={line.a.x} y1={line.a.y} x2={line.b.x} y2={line.b.y} class:trail-line={line.trail} />{/each}
+	</svg>
+	{#each REGIONS as region}
+		{@const point = project(region, camera)}
+		{#if camera.k < 0.3 && point.x > -120 && point.x < width + 120 && point.y > -50 && point.y < height + 50}
+			<span class="region-name" style="left:{point.x}px;top:{point.y - 35}px">{region.label}</span>
 		{/if}
-	</footer>
+	{/each}
+	{#each visible as item (item.node.title)}
+		{@const node = item.node}
+		{#if camera.k >= 0.24 || node.hub || node.title === selected}
+			<button type="button" data-node={node.title} class="world-node" class:focused={node.title === selected} class:landmark={node.hub}
+				style="left:{item.x}px;top:{item.y}px" aria-label={`${node.title}${node.explored ? ', explored' : ''}`}
+				title={node.title} onclick={() => { if (performance.now() >= blockClickUntil) select(node); }}
+				onpointerenter={() => hover(node.title)} onpointerleave={() => clearTimeout(hoverTimer)}>
+				<span class="orb" class:visited={trail.includes(node.title)}></span>
+				{#if labels.has(node.title)}<span class="node-label">{node.title}</span>{/if}
+			</button>
+		{:else}<span class="distant-node" aria-hidden="true" style="left:{item.x}px;top:{item.y}px"></span>{/if}
+	{/each}
+
+	<div class="map-overlay search-panel">
+		<form onsubmit={submitSearch}>
+			<Search size={18} aria-hidden="true" />
+			<input bind:value={query} placeholder="Find any Wikipedia article" aria-label="Search all Wikipedia articles"
+				role="combobox" aria-autocomplete="list" aria-expanded={searchOpen && query.trim().length >= 2}
+				aria-controls={searchOpen && query.trim().length >= 2 ? 'map-search-results' : undefined}
+				aria-activedescendant={searchOpen && currentResults[highlighted] ? `map-result-${highlighted}` : undefined}
+				onfocus={() => { searchOpen = true; }} oninput={() => { searchOpen = true; }}
+				onblur={() => { searchOpen = false; highlighted = -1; }}
+				onkeydown={(event) => {
+					if (event.key === 'ArrowDown') { event.preventDefault(); searchOpen = true; highlighted = Math.min(highlighted + 1, currentResults.length - 1); }
+					else if (event.key === 'ArrowUp') { event.preventDefault(); highlighted = Math.max(-1, highlighted - 1); }
+					else if (event.key === 'Escape') { searchOpen = false; highlighted = -1; }
+				}} />
+		</form>
+		{#if searchOpen && query.trim().length >= 2}
+			<ul id="map-search-results" role="listbox">
+				{#if searching}<li role="presentation" class="search-status">Searching Wikipedia…</li>
+				{:else if searchError}<li role="presentation" class="search-status">Search unavailable. Try another query.</li>
+				{:else if !currentResults.length}<li role="presentation" class="search-status">No matches. Try another title.</li>
+				{:else}{#each currentResults as result, index (result.title)}
+					<li id="map-result-{index}" role="option" aria-selected={index === highlighted}>
+						<button type="button" tabindex="-1" class:highlighted={index === highlighted}
+							onpointerdown={(event) => event.preventDefault()} onclick={() => select(result)}>
+							<strong>{result.title}</strong><span>{result.description ?? 'Wikipedia article'}</span>
+						</button>
+					</li>
+				{/each}{/if}
+			</ul>
+		{/if}
+		<p class="sr-only" role="status">{searching ? 'Searching Wikipedia' : searchError ? 'Search unavailable' : `${currentResults.length} results`}</p>
+	</div>
+	<div class="map-overlay controls">
+		<button type="button" onclick={overview} title="Show topic regions"><Scan size={18} aria-hidden="true" /><span>Overview</span></button>
+		<button type="button" onclick={() => { if (focus) center(focus); else overview(); }} aria-label="Recenter selected article" title="Recenter"><RotateCw size={18} /></button>
+		<button type="button" onclick={() => zoom(1.35)} aria-label="Zoom in" title="Zoom in"><Plus size={18} /></button>
+		<button type="button" onclick={() => zoom(1 / 1.35)} aria-label="Zoom out" title="Zoom out"><Minus size={18} /></button>
+	</div>
+	{#if !focus}
+		<div class="map-overlay orientation"><h1>Explore Wikipedia</h1><p>Choose a topic region, or search for an article.</p><p class="gesture-help">Drag to pan. Pinch or Ctrl + scroll to zoom.</p></div>
+	{/if}
+	{#if focus && !reader.isOpen}
+		<aside class="map-overlay detail" aria-label="Selected article">
+			<button type="button" class="detail-close" onclick={closeSelection} aria-label="Close selected article"><X size={18} /></button>
+			<p class="detail-region">Wikipedia article</p>
+			<h1>{focus.title}</h1>
+			{#if article?.extract}<p class="summary">{article.extract}</p>
+			{:else if focus.description}<p class="summary">{focus.description}</p>
+			{:else if summaryError}<p class="summary">Summary unavailable. You can still open the article.</p>
+			{:else}<p class="summary">Loading summary…</p>{/if}
+			<div class="detail-actions"><button type="button" onclick={() => reader.open(article?.title ?? focus!.title)}>Read article <ArrowRight size={16} /></button>
+				<a href={`/?seed=${encodeURIComponent(article?.title ?? focus.title)}`}>Start tangent here</a></div>
+			<h2>Connections</h2>
+			{#if loading}<p class="local-status" role="status">Finding connections…</p>{/if}
+			{#if error}<p class="local-status" role="alert">{error}</p><button class="retry" type="button" onclick={() => { if (selected) void loadSelection(selected, ++selectionVersion); }}>Retry connections</button>{/if}
+			{#if connections.length}<div class="connection-list">{#each connections.slice(0, 20) as node (node.title)}<button type="button" onclick={() => select(node)} onpointerenter={() => hover(node.title)} onpointerleave={() => clearTimeout(hoverTimer)}>{node.title}<ArrowRight size={14} /></button>{/each}</div>{/if}
+			<p class="map-note">Solid lines show discovered connections. Dotted lines trace your visits. Topic regions are starting points.</p>
+		</aside>
+	{/if}
+	{#if reader.isOpen}<div class="map-overlay graph-reader"><ArticleReader onDive={dive} /></div>{/if}
+	{#if trail.length > 1 && !reader.isOpen}<nav class="map-overlay trail" aria-label="Map trail">{#each trail as title}<button type="button" class:current={selected === title} onclick={() => dive(title)}>{title}</button>{/each}</nav>{/if}
+	<div class="map-overlay attribution"><a href="https://en.wikipedia.org" target="_blank" rel="noopener noreferrer">Wikipedia</a><span> · </span><a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-SA</a></div>
 </div>
 
 <style>
-	.node-label {
-		transition: opacity 200ms ease;
+	.universe { position: relative; width: 100%; height: calc(100dvh - var(--app-header-height, 69px)); min-height: 400px; overflow: hidden; background: var(--color-void); touch-action: none; isolation: isolate; outline-offset: -3px; }
+	.universe.dragging { cursor: grabbing; }
+	.map-navigation { position: absolute; inset: 0; width: 100%; height: 100%; background: transparent; border: 0; cursor: grab; }
+	.map-navigation:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -3px; }
+	.starfield, .connections { position: absolute; inset: 0; pointer-events: none; }
+	.starfield { background: radial-gradient(ellipse at 25% 30%, color-mix(in srgb, var(--color-spark) 8%, transparent), transparent 40%), radial-gradient(ellipse at 75% 65%, color-mix(in srgb, var(--color-accent) 8%, transparent), transparent 45%); }
+	.starfield i { position: absolute; border-radius: 50%; background: var(--color-muted); opacity: .22; }
+	.connections line { stroke: var(--color-hair-strong); stroke-width: 1; opacity: .45; }
+	.connections line.trail-line { stroke: var(--color-accent); opacity: .6; stroke-dasharray: 3 5; }
+	.world-node { position: absolute; display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; transform: translate(-50%, -50%); padding: 0; background: transparent; border: 0; color: var(--color-ink); z-index: 2; }
+	.orb { display: block; width: 11px; height: 11px; border-radius: 50%; background: var(--color-muted); border: 1px solid var(--color-hair-strong); box-shadow: 0 0 15px color-mix(in srgb, var(--color-muted) 15%, transparent); transition: background .15s, transform .15s; }
+	.landmark .orb { width: 23px; height: 23px; background: var(--color-spark); box-shadow: 0 0 35px color-mix(in srgb, var(--color-spark) 22%, transparent); }
+	.focused { z-index: 4; }
+	.focused .orb { width: 27px; height: 27px; background: var(--color-accent); outline: 1px solid var(--color-accent); outline-offset: 5px; }
+	.orb.visited { border: 2px solid var(--color-accent); }
+	.world-node:hover .orb, .world-node:focus-visible .orb { transform: scale(1.25); background: var(--color-accent); }
+	.node-label { position: absolute; top: 40px; left: 50%; transform: translateX(-50%); max-width: 170px; width: max-content; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 2px 6px; border-radius: 4px; font-size: 12px; line-height: 20px; background: color-mix(in srgb, var(--color-void) 88%, transparent); pointer-events: none; }
+	.region-name { position: absolute; transform: translate(-50%, -100%); font-family: var(--font-display); font-size: 17px; color: var(--color-spark); pointer-events: none; }
+	.distant-node { position: absolute; width: 3px; height: 3px; transform: translate(-50%, -50%); border-radius: 50%; background: var(--color-muted); opacity: .6; pointer-events: none; }
+	.animate .world-node, .animate .distant-node, .animate .region-name { transition: left .3s ease, top .3s ease; }
+	.map-overlay { position: absolute; z-index: 8; touch-action: auto; }
+	.search-panel { top: 16px; left: 16px; width: min(360px, calc(100% - 32px)); }
+	.search-panel form { display: flex; align-items: center; gap: 9px; border: 1px solid var(--color-hair-strong); border-radius: 12px; background: var(--color-surface); padding: 0 13px; box-shadow: var(--shadow-card); }
+	.search-panel input { min-width: 0; width: 100%; height: 46px; border: 0; outline: 0; font-size: 14px; color: var(--color-ink); background: transparent; }
+	.search-panel ul { margin-top: 6px; border: 1px solid var(--color-hair); border-radius: 12px; overflow: auto; max-height: min(380px, 55dvh); background: var(--color-surface); box-shadow: var(--shadow-card); }
+	.search-panel li button { display: flex; flex-direction: column; align-items: start; gap: 2px; width: 100%; padding: 10px 13px; text-align: left; min-height: 44px; }
+	.search-panel li button:hover, .search-panel li button.highlighted { background: var(--color-surface-2); }
+	.search-panel strong { font-size: 14px; font-weight: 500; }
+	.search-panel li span { font-size: 12px; color: var(--color-muted); }
+	.search-status { padding: 14px; color: var(--color-muted); font-size: 13px; }
+	.controls { left: 16px; bottom: 18px; display: flex; padding: 3px; border: 1px solid var(--color-hair); border-radius: 12px; background: var(--color-surface); box-shadow: var(--shadow-card); }
+	.controls button { display: inline-flex; justify-content: center; align-items: center; gap: 7px; min-width: 44px; min-height: 44px; border-radius: 8px; font-size: 13px; }
+	.controls button:first-child { padding-inline: 10px; }
+	.controls button:hover { background: var(--color-surface-2); }
+	.orientation { left: 16px; top: 84px; max-width: 290px; pointer-events: none; }
+	.orientation h1 { font-family: var(--font-display); font-size: 23px; font-weight: 600; }
+	.orientation p { color: var(--color-muted); font-size: 13px; margin-top: 5px; }
+	.orientation .gesture-help { color: var(--color-faint); font-size: 11px; margin-top: 12px; }
+	.detail { top: 16px; right: 16px; width: 310px; max-height: calc(100% - 100px); overflow-y: auto; border: 1px solid var(--color-hair); border-radius: 16px; background: var(--color-surface); box-shadow: var(--shadow-card); padding: 20px; }
+	.detail-close { position: absolute; right: 5px; top: 5px; display: grid; place-items: center; width: 40px; height: 40px; }
+	.detail-region { font-size: 11px; color: var(--color-faint); padding-right: 25px; }
+	.detail h1 { font-family: var(--font-display); font-size: 25px; line-height: 1.15; margin-top: 6px; padding-right: 10px; overflow-wrap: anywhere; }
+	.summary { color: var(--color-muted); font-size: 13px; line-height: 1.55; margin-top: 14px; }
+	.detail-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+	.detail-actions button, .detail-actions a { display: inline-flex; justify-content: center; align-items: center; gap: 7px; min-height: 44px; padding: 8px 12px; border-radius: 9px; font-size: 12px; background: var(--color-surface-2); color: var(--color-ink); }
+	.detail-actions button { background: var(--color-accent); color: var(--color-void); }
+	.detail h2 { font-size: 13px; font-weight: 600; margin-top: 20px; }
+	.local-status, .retry { font-size: 12px; margin-top: 9px; color: var(--color-muted); }
+	.retry { min-height: 44px; text-decoration: underline; }
+	.connection-list { display: flex; flex-direction: column; margin-top: 8px; }
+	.connection-list button { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 40px; text-align: left; font-size: 12px; color: var(--color-muted); border-bottom: 1px solid var(--color-hair); padding-block: 7px; }
+	.connection-list button:hover { color: var(--color-accent); }
+	.map-note { margin-top: 15px; font-size: 10px; line-height: 1.5; color: var(--color-faint); }
+	.trail { bottom: 18px; left: 280px; right: 16px; display: flex; gap: 5px; overflow-x: auto; max-width: calc(100% - 300px); background: var(--color-surface); border: 1px solid var(--color-hair); border-radius: 10px; padding: 3px; }
+	.trail button { flex-shrink: 0; min-height: 44px; padding: 5px 10px; font-size: 12px; color: var(--color-muted); white-space: nowrap; border-radius: 7px; }
+	.trail button.current { color: var(--color-accent); background: var(--color-surface-2); }
+	.graph-reader { top: 0; right: 0; z-index: 12; height: 100%; width: min(680px, 65%); --reader-top: 0px; --reader-height: 100%; background: var(--color-surface); overflow-y: auto; }
+	.attribution { bottom: 1px; right: 12px; font-size: 10px; color: var(--color-faint); }
+	.attribution a:hover { color: var(--color-ink); }
+	@media (max-width: 760px) {
+		.detail { top: auto; bottom: 78px; left: 12px; right: 12px; width: auto; max-height: 36%; padding: 16px; }
+		.detail h1 { font-size: 22px; }
+		.summary { margin-top: 9px; }
+		.trail { display: none; }
+		.graph-reader { width: 100%; }
+		.orientation { max-width: 220px; }
 	}
-	.labels-hidden .node-label {
-		opacity: 0;
-	}
+	/* The shared reader takes over below its desktop breakpoint. Lift its containing
+	   stacking context above the shell header so close and title remain reachable. */
+	@media (max-width: 1023px) { .universe.reader-open { z-index: 30; } }
+	@media (prefers-reduced-motion: reduce) { .animate .world-node, .animate .distant-node, .animate .region-name { transition: none; } }
 </style>

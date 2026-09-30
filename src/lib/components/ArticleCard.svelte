@@ -1,22 +1,28 @@
 <script lang="ts">
 	import type { FeedCard } from '$lib/feed/types';
-	import { Star, CirclePlus, LoaderCircle, ArrowRight } from '@lucide/svelte';
+	import { Star, Check, BookOpen, LoaderCircle, ArrowRight } from '@lucide/svelte';
 	import { FEED } from '$lib/feed/config';
 	import { DwellTracker } from '$lib/engagement/dwell';
 	import { profile } from '$lib/engagement/profile.svelte';
 	import { feed } from '$lib/feed/feedState.svelte';
 	import { track } from '$lib/metrics';
 	import { actionHint } from '$lib/feed/hint.svelte';
+	import { cardThumbnail } from '$lib/feed/images';
 	import ConnectionBreadcrumb from './ConnectionBreadcrumb.svelte';
 
 	let {
 		card,
+		showImage = true,
+		onImageExhausted,
 		onBranch,
 		onRead,
 		onNavigateToSource,
 		onSeen
 	}: {
 		card: FeedCard;
+		/** Repeated file imagery is omitted by the feed without changing article metadata. */
+		showImage?: boolean;
+		onImageExhausted?: (cardId: string) => void;
 		onBranch: (card: FeedCard) => Promise<void> | void;
 		onRead: (card: FeedCard) => void;
 		/** Jump to the card this one branched/linked/dove from, if it's in view. */
@@ -34,9 +40,18 @@
 
 	let branching = $state(false);
 	let interacted = false;
-	// Wikipedia thumbnails (especially body-scraped fallbacks) sometimes 404. The inset
-	// is decorative garnish, so a broken one collapses rather than showing a broken box.
-	let imageFailed = $state(false);
+	// Larger Wikimedia thumbnails can fail for individual formats. Retry the source
+	// supplied by Wikipedia once, then omit a broken image without leaving a blank frame.
+	let failedSources = $state<string[]>([]);
+	const preferredImage = $derived(cardThumbnail(article.thumbnail));
+	const image = $derived(preferredImage && !failedSources.includes(preferredImage.source)
+		? preferredImage : article.thumbnail);
+	function handleImageError(event: Event) {
+		const source = (event.currentTarget as HTMLImageElement).getAttribute('src');
+		if (source && !failedSources.includes(source)) failedSources = [...failedSources, source];
+		if (article.thumbnail && failedSources.includes(article.thumbnail.source) &&
+			(!preferredImage || failedSources.includes(preferredImage.source))) onImageExhausted?.(card.id);
+	}
 
 	async function branch() {
 		if (branching) return;
@@ -113,11 +128,13 @@
 		const io = new IntersectionObserver(
 			(entries) => {
 				for (const entry of entries) {
-					inView = entry.isIntersecting && entry.intersectionRatio >= 0.5;
+					// Tall cards should still count as reading once they fill half a viewport.
+					inView = entry.isIntersecting && entry.intersectionRect.height >=
+						Math.min(entry.boundingClientRect.height, window.innerHeight) * 0.5;
 					updateVisibility();
 				}
 			},
-			{ threshold: [0, 0.5, 1] }
+			{ threshold: Array.from({ length: 21 }, (_, index) => index / 20) }
 		);
 		io.observe(el);
 		document.addEventListener('visibilitychange', updateVisibility);
@@ -140,28 +157,24 @@
 	<div class="space-y-3 p-5 sm:p-6">
 		<ConnectionBreadcrumb connection={card.connection} onNavigate={onNavigateToSource} />
 
-		<!-- Keep the thumbnail beside the heading, so the summary uses the full card width. -->
-		<div class="flex items-start gap-4">
-			<div class="min-w-0 flex-1">
-				<h2 class="font-display text-2xl leading-tight font-semibold tracking-tight text-ink">
-					{article.title}
-				</h2>
-				{#if !pending && article.description}
-					<p class="mt-1 font-display text-[15px] text-faint italic">{article.description}</p>
-				{/if}
-			</div>
-
-			{#if article.thumbnail && !imageFailed}
-				<!-- Decorative: the title alongside already names it, so alt is empty. -->
-				<img
-					src={article.thumbnail.source}
-					alt=""
-					loading="lazy"
-					onerror={() => (imageFailed = true)}
-					class="mt-1 size-20 shrink-0 rounded-xl border border-hair object-cover object-top sm:size-24"
-				/>
+		<div class="min-w-0">
+			<h2 class="font-display text-2xl leading-tight font-semibold tracking-tight text-ink">
+				{article.title}
+			</h2>
+			{#if !pending && article.description}
+				<p class="mt-1 font-display text-[15px] text-faint italic">{article.description}</p>
 			{/if}
 		</div>
+
+		{#if showImage && !pending && image && !failedSources.includes(image.source)}
+			<figure class="flex w-full justify-center py-1">
+				<img src={image.source} alt="" loading="lazy" decoding="async"
+					width={image.width > 0 ? image.width : undefined}
+					height={image.height > 0 ? image.height : undefined}
+					onerror={handleImageError}
+					class="block h-auto w-auto max-h-64 max-w-full rounded-xl border border-hair object-contain sm:max-h-80" />
+			</figure>
+		{/if}
 
 		{#if pending}
 			<!-- Keep the placeholder shorter than the real body to avoid a shrinking dive landing. -->
@@ -172,64 +185,47 @@
 			</div>
 			<p class="sr-only">Loading article…</p>
 		{:else}
-			<!-- The full summary is the hook; don't clamp it to a stub. -->
-			<p class="text-base leading-normal text-muted">{article.extract}</p>
+			<!-- Keep the preview scannable; Read article opens the complete text. -->
+			<p class="line-clamp-5 text-base leading-normal text-muted">{article.extract}</p>
 		{/if}
 
 		{#if !pending}
-		<div class="flex flex-wrap items-center gap-2 pt-1">
+		<div class="space-y-3 border-t border-hair pt-4">
+			<div class="grid grid-cols-2 gap-2">
+				<button type="button" onclick={read} aria-label={`Read article: ${article.title}`}
+					class="flex min-h-14 items-center justify-center gap-2 rounded-xl bg-read px-3 py-2.5 text-left text-sm
+						font-medium text-surface-2 transition-opacity hover:opacity-90">
+					<BookOpen class="hidden size-4 shrink-0 sm:block" aria-hidden="true" />
+					<span>Read article<span class="mt-0.5 block text-[11px] font-normal opacity-75">Full text</span></span>
+				</button>
+				<button type="button" onclick={branch} disabled={branching}
+					aria-label={`Follow related topic: ${article.title}`}
+					class="flex min-h-14 items-center justify-center gap-2 rounded-xl border border-hair-strong px-3 py-2.5
+						text-left text-sm font-medium text-ink transition-colors hover:bg-surface-2 disabled:opacity-50">
+					{#if branching}<LoaderCircle class="hidden size-4 shrink-0 animate-spin sm:block" aria-hidden="true" />
+					{:else}<ArrowRight class="hidden size-4 shrink-0 sm:block" aria-hidden="true" />{/if}
+					<span>{branching ? 'Following…' : 'Follow related'}<span class="mt-0.5 block text-[11px] font-normal text-muted">Adds a new topic</span></span>
+				</button>
+			</div>
+			<div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
 			<button
 				type="button"
 				onclick={toggleLike}
 				aria-pressed={liked}
-				aria-label={liked ? `Unlike ${article.title}` : `Like ${article.title}`}
-				title="Remember this topic for future tangents"
-				class="group inline-flex min-h-11 items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm
-					font-medium transition-all active:scale-95
+				aria-label={liked ? `Forget interest in ${article.title}` : `Remember interest in ${article.title}`}
+				title="Use this interest for future suggestions"
+				class="group -ml-2 inline-flex min-h-11 items-center gap-1.5 rounded-full px-2 py-1.5 text-sm
+					font-medium transition-colors
 					{liked
-					? 'border-like/40 bg-like/10 text-like'
-					: 'border-hair text-muted hover:border-hair-strong hover:text-ink'}"
+					? 'text-like'
+					: 'text-muted hover:bg-surface-2 hover:text-ink'}"
 			>
-				<!-- Favorite star — filled when active. -->
-				<Star
-					class="size-4 transition-transform group-active:scale-110"
-					fill={liked ? 'currentColor' : 'none'}
-					aria-hidden="true"
-				/>
-				{liked ? 'Liked' : 'Like'}
+				{#if liked}<Check class="size-4" aria-hidden="true" />
+				{:else}<Star class="size-4" aria-hidden="true" />{/if}
+				{liked ? 'Interest remembered' : 'Remember interest'}
 			</button>
-
-			<!-- Read-fill primary pill (Ben's NewTangent kind), matching the nav CTA. -->
-			<button
-				type="button"
-				onclick={branch}
-				disabled={branching}
-				aria-label={`More like this: ${article.title}`}
-				title="Follow a related article now"
-				class="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-hair bg-read px-3
-					py-1.5 text-sm font-medium text-surface-2 transition-all hover:opacity-90
-					active:scale-95 disabled:opacity-50"
-			>
-				{#if branching}
-					<LoaderCircle class="size-4 animate-spin" aria-hidden="true" />
-				{:else}
-					<CirclePlus class="size-4" aria-hidden="true" />
-				{/if}
-				More like this
-			</button>
-
-			<button
-				type="button"
-				onclick={read}
-				aria-label={`Read article: ${article.title}`}
-				title="Open the full article"
-				class="group ml-auto inline-flex min-h-11 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm
-					font-medium text-muted transition-colors hover:text-ink"
-			>
-				Read article
-				<!-- Arrow, not a chevron: this opens the reader pane, it doesn't expand in place. -->
-				<ArrowRight class="size-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
-			</button>
+				<p class="text-xs text-faint">Tunes future suggestions</p>
+			</div>
 		</div>
 		{/if}
 	</div>

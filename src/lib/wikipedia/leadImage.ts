@@ -16,8 +16,8 @@ const IMG_TAG = /<img\b[^>]*>/g;
 const MIN_WIDTH = 100;
 const MIN_HEIGHT = 80;
 
-/** Width we request from the thumb scaler, capped at the original file width. */
-const TARGET_WIDTH = 640;
+/** Verified Wikimedia thumbnail bin, capped at the original file width. */
+const TARGET_WIDTH = 500;
 
 /** Bitmap files that are still not representative of the article. */
 const JUNK_NAME = /signature|autograph/i;

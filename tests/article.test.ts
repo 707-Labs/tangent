@@ -23,6 +23,22 @@ const infobox = (rows: string) =>
 	`<table class="infobox hproduct"><caption class="infobox-title fn"><i>Jet</i></caption><tbody>${rows}</tbody></table>`;
 
 describe('sanitizeArticleHtml — infobox lead-image hoist', () => {
+	it('hoists country-map captions without losing the descriptive text', () => {
+		const out = sanitizeArticleHtml(infobox(`<tr><td colspan="2"><span class="mw-default-size">${COVER}</span><div class="ib-country-map-caption">Political boundaries in the eighth century BC.</div></td></tr>${FACT_ROW}`));
+		expect(out).toContain('<figcaption>Political boundaries in the eighth century BC.</figcaption>');
+		expect(out.match(/Political boundaries in the eighth century BC\./g)).toHaveLength(1);
+		expect(out).toContain('quick-facts');
+	});
+
+	it('preserves complex nested infobox rows and spanning cells', () => {
+		const out = sanitizeArticleHtml(infobox('<tr><th rowspan="2">Period</th><td>First</td></tr><tr><td>Second</td></tr><tr><td colspan="2"><table><tr><td>Preceded by</td><td>Succeeded by</td></tr></table></td></tr>'));
+		expect(out).toContain('rowspan="2"');
+		expect(out).toContain('colspan="2"');
+		expect(out).toContain('Preceded by');
+		expect(out).toContain('Succeeded by');
+		expect(out.match(/<table/g)).toHaveLength(2);
+		expect(out.match(/class="quick-facts"/g)).toHaveLength(1);
+	});
 	describe('single-image infobox', () => {
 		const out = sanitizeArticleHtml(infobox(imageRow(COVER) + FACT_ROW));
 

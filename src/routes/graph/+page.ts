@@ -1,3 +1,2 @@
-// Pure client-side playground: layout math needs the viewport, and every node is
-// fetched interactively — there is nothing useful to server-render.
+// The world uses viewport coordinates and client acquisitions; landmarks render after mount.
 export const ssr = false;

@@ -91,8 +91,8 @@ shadow values.** Tailwind generates the utilities from the `@theme` block:
 | `--shadow-card` | `0 10px 30px -18px rgba(0,0,0,.85)` | Card drop shadow (re-toned softer per light theme) |
 
 Spacing, breakpoints, and most radii come from **Tailwind defaults** — there are no custom
-spacing/breakpoint tokens. The only non-`@theme` custom property is `--tl-spine` (timeline
-component-local). Motion primitives are keyframes in `app.css` (`slide-from-right`, `wh-rise`,
+spacing/breakpoint tokens. Component properties include `--tl-spine` (timeline) and
+`--app-header-height` (measured reader clearance). Motion primitives are keyframes in `app.css` (`slide-from-right`, `wh-rise`,
 `wh-fade`, `wh-shimmer`, `wh-land`); all motion is gated by `@media (prefers-reduced-motion)`.
 
 ### Themes
@@ -131,9 +131,9 @@ morphs the shell into a two-pane split (`lg:max-w-7xl`) via a one-shot `transiti
 
 | Route | Description |
 |---|---|
-| `/` | The infinite feed: scroll a stream of connected article cards; like/dive to steer it; open the reader pane and the trail of where you've been. |
+| `/` | The infinite feed: read connected article previews, follow a related topic, or remember an interest for future suggestions; open the reader pane and your trail. |
 | `/start` | New tangent: search Wikipedia or pick from "Today on Wikipedia" (featured / DYK / on this day / news / trending) to seed a fresh feed. |
-| `/graph` | The knowledge canvas (prototype): a Figma-style infinite canvas where articles accumulate as nodes. Tapping a node expands its live candidate pool (same /api/links as the feed) radially away from its parent, classified into directional sectors (wild / place / deeper / theme / era, rosette labels shown around the focused node only); already-charted titles become cross-edges. Camera: scroll/two-finger pans, ctrl-or-cmd+scroll and pinch zoom to cursor, drag pans, +/−/fit controls; camera tweens to a tapped node; node labels fade below 0.55×. Seeds hydrate via `/api/card?categories=1` so the first hop sectors immediately; the era-place "zoom out" ladder adds rungs to the canvas above the focused node. Entered from the header Waypoints icon; without `?seed=` it seeds from the feed's chain tip (persisted trail). |
+| `/graph` | A full-window map with seven topic regions and real Wikipedia article landmarks. Search imports articles beyond the initial map; selecting a node moves the camera immediately and loads its summary and neighborhood. Stable positions, screen-space label collision checks, and focused connections keep repeated exploration readable. Dotted paths show the order of visits. Drag, scroll, pinch, keyboard, and zoom controls navigate the canvas. Read in place or start a feed from the selection. Without `?seed=`, it resumes the feed's chain tip when available. |
 | `/about` | Static page — what Tangent is, where content comes from, licensing and privacy. |
 | `/terms` | Terms of Use + Privacy in one plain-language page. |
 | `/auth/verify` | Magic-link verification landing (sign-in token check; shows recovery copy on a spent/expired link). |
@@ -142,8 +142,15 @@ The start page prioritizes search, immediate surprise, and topic choices above d
 picks. Search dismisses on Escape or blur and selects only results matching the
 current query. Daily picks enrich surprise only once available.
 
-Feed cards place the thumbnail beside the title and description. Summary text
-uses the full width below that row so phone-sized reading columns stay readable.
+Feed cards center images between the heading and a five-line preview, preserve their
+aspect ratio, and omit repeat Wikimedia files within a tangent. Read article and
+Follow related carry different visual weight; Remember interest stays separate.
+
+The map uses the whole viewport below the app header. Desktop selections sit beside
+the canvas; phones use a bottom panel. Search reaches articles outside the loaded
+neighborhoods, which grow on demand rather than preloading Wikipedia. Decorative
+background stars are never presented as articles. The reader replaces the map controls
+while open on a phone and stays within the viewport at every scroll position.
 
 ---
 
@@ -151,7 +158,7 @@ uses the full width below that row so phone-sized reading columns stay readable.
 
 **13 components**, all in `src/lib/components/` (flat, no domain subdirs). Grouped by role:
 
-- **Feed & reading** — `ArticleCard` (one article in the rabbit-hole stream; like/dive actions; joins the trail on first view), `ArticleReader` (full-article reading pane; opens the two-pane split), `SkeletonCard` (feed-card loading placeholder), `ActionHint` (one-time orientation for the Like / Dive actions), `LinkPreview` (hover peek of an in-article link — pointer-fine only, inert on touch).
+- **Feed & reading** — `ArticleCard` (centered media, a five-line preview, Read article / Follow related actions, and a separate Remember interest toggle; joins the trail on first view), `ArticleReader` (full article, compact Quick facts, and direct access to Sources; desktop pane follows measured header height), `SkeletonCard` (feed-card loading placeholder), `ActionHint` (one-time explanation of reading, following, and personalization), `LinkPreview` (hover peek of an in-article link — pointer-fine only, inert on touch).
 - **Trail & connections** — `TrailPanel` (the trail of articles you've actually reached; jump back to waypoints), `ConnectionBreadcrumb` ("came from" link back to a card's source), `RelationIcon` (geometric icon for a connection's relation type — the shared node/edge/point vocabulary).
 - **Brand & chrome** — `BrandMark` (wordmark + tangent-line logo with the lone ember dot at the touch-point), `Drawer` (accessible native `<dialog>` slide-in panel primitive; focus-restoring close).
 - **Settings & account** — `ProfilePanel` (Settings drawer: compact account shortcut, appearance, feed flavor, learned interests), `AccountPanel` (dedicated sign-in/account drawer), `AccountSection` (shared account forms), `ThemePicker` (four compact appearance choices).

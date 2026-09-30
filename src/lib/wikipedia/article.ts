@@ -91,6 +91,7 @@ export function sanitizeArticleHtml(raw: string): string {
 
 	// Keep citation text and stable note ids accessible without overwhelming the prose.
 	html = discloseReferences(html);
+	html = polishBibliographies(html);
 
 	// Media must use native controls without fetching recordings before playback.
 	html = html.replace(/<(audio|video)\b([^>]*)>/gi, (_m, tag: string, attrs: string) => {
@@ -183,7 +184,7 @@ function hoistInfoboxImage(table: string): { lead: string; table: string } {
 	const imgs = row.match(/<img\b[^>]*>/gi) ?? [];
 	if (imgs.length !== 1) return { lead: '', table }; // multi-image cell — leave it in the drawer
 
-	const caption = /<div\b[^>]*\binfobox-caption\b[^>]*>([\s\S]*?)<\/div>/i.exec(row)?.[1];
+	const caption = /<div\b[^>]*\b(?:infobox-caption|ib-country-map-caption)\b[^>]*>([\s\S]*?)<\/div>/i.exec(row)?.[1];
 	const figcaption = caption ? `<figcaption>${caption}</figcaption>` : '';
 	const lead = `<figure class="infobox-lead">${imgs[0]}${figcaption}</figure>`;
 
@@ -370,7 +371,7 @@ function isWideGridTable(body: string): boolean {
 
 /** Preserve complete citation lists, including note anchors and backlinks, in disclosures.
  * Match the outermost reference container so nested reflist/wrap/ol nodes are not
- * wrapped repeatedly. A bibliography outside the apparatus stays ordinary content. */
+ * wrapped repeatedly. Bibliographies outside the apparatus remain visible lists. */
 function discloseReferences(html: string): string {
 	const open = /<(div|ol)\b[^>]*\bclass="(?:[^"]*\s)?(?:mw-references-wrap|reflist|references)(?=\s|")[^"]*"[^>]*>/gi;
 	const out: string[] = [];
@@ -378,13 +379,100 @@ function discloseReferences(html: string): string {
 	for (let match = open.exec(html); match; match = open.exec(html)) {
 		const end = matchingTagEnd(html, match.index, match[1]);
 		if (end === -1) continue;
-		out.push(html.slice(cursor, match.index), '<details class="wh-sources"><summary>Sources</summary>',
-			html.slice(match.index, end), '</details>');
+		out.push(html.slice(cursor, match.index), '<details class="wh-sources"><summary><span>Sources</span> <span class="wh-disclosure-show">Show</span><span class="wh-disclosure-hide">Hide</span></summary>',
+			polishSources(html.slice(match.index, end)), '</details>');
 		cursor = end;
 		open.lastIndex = end;
 	}
 	out.push(html.slice(cursor));
 	return out.join('');
+}
+
+/** Only lists composed of explicit citation items receive bibliography polish.
+ * Skip already polished reference disclosures; ordinary prose/lists remain untouched. */
+function polishBibliographies(html: string): string {
+	const open = /<(details|ul|ol)\b[^>]*>/gi;
+	const output: string[] = [];
+	let cursor = 0;
+	for (let match = open.exec(html); match; match = open.exec(html)) {
+		const end = matchingTagEnd(html, match.index, match[1]);
+		if (end === -1) continue;
+		if (match[1].toLowerCase() === 'details') {
+			if (/\bclass="[^"]*\bwh-sources\b/.test(match[0])) open.lastIndex = end;
+			continue;
+		}
+		const block = html.slice(match.index, end);
+		const items = block.match(/<li\b[^>]*>[\s\S]*?<\/li>/gi) ?? [];
+		if (!items.length || !items.every((item) => /<cite\b[^>]*\bclass="[^"]*\b(?:citation|cs1)\b/i.test(item))) continue;
+		const opening = /\bclass="/i.test(match[0])
+			? match[0].replace(/\bclass="/i, 'class="wh-bibliography ')
+			: match[0].replace(/>$/, ' class="wh-bibliography">');
+		output.push(html.slice(cursor, match.index), polishSources(opening + block.slice(match[0].length)));
+		cursor = end;
+		open.lastIndex = end;
+	}
+	output.push(html.slice(cursor));
+	return output.join('');
+}
+
+/** Keep original citation text/links; add an explicit route to substantive sources. */
+function polishSources(html: string): string {
+	const backlink = /<span\b[^>]*\bclass="[^"]*\bmw-cite-backlink\b[^"]*"[^>]*>/gi;
+	const output: string[] = [];
+	let cursor = 0;
+	for (let match = backlink.exec(html); match; match = backlink.exec(html)) {
+		const end = matchingTagEnd(html, match.index, 'span');
+		if (end === -1) continue;
+		const block = html.slice(match.index, end);
+		const total = (block.match(/<a\b/gi) ?? []).length;
+		let index = 0;
+		const changed = block.replace(/(<a\b[^>]*>)[\s\S]*?<\/a>/gi, (_m, open: string) => {
+			index++;
+			return `${open}Back to text${total > 1 ? ` ${index}` : ''}</a>`;
+		});
+		output.push(html.slice(cursor, match.index), changed);
+		cursor = end;
+		backlink.lastIndex = end;
+	}
+	output.push(html.slice(cursor));
+	html = output.join('');
+	const item = /<li\b[^>]*>/gi;
+	const items: string[] = [];
+	cursor = 0;
+	for (let match = item.exec(html); match; match = item.exec(html)) {
+		const end = matchingTagEnd(html, match.index, 'li');
+		if (end === -1) continue;
+		const block = html.slice(match.index, end);
+		// Prefer actual citation links over contextual links in freeform notes.
+		const citation = /<cite\b[^>]*>[\s\S]*?<\/cite>/i.exec(block)?.[0] ?? block;
+		const action = sourceAction(citation);
+		items.push(html.slice(cursor, match.index), action ? `${block.slice(0, -5)}${action}</li>` : block);
+		cursor = end;
+		item.lastIndex = end;
+	}
+	items.push(html.slice(cursor));
+	return items.join('');
+}
+
+function sourceAction(citation: string): string {
+	for (const match of citation.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi)) {
+		const href = /\bhref=(?:"([^"]*)"|'([^']*)')/i.exec(match[1]);
+		const value = href?.[1] ?? href?.[2];
+		if (!value || !isSafeUrl(value)) continue;
+		const label = match[2].replace(/<[^>]*>/g, '').trim();
+		// Catalog/identifier links are metadata, not a visitable citation title.
+		if (!label || /^(?:ISBN|ISSN|OCLC|PMID|PMC|doi|hdl|arXiv|S2CID)(?:\b|\d)/i.test(label) || /^(?:\d[\d./:-]*|10\.\d{4,9}\/\S+)$/i.test(label)) continue;
+		try {
+			const url = new URL(decodeRefs(value).replace(/&amp;/gi, '&'));
+			if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) continue;
+			if (/(?:^|\.)(?:wikipedia\.org|wikidata\.org|worldcat\.org|openlibrary\.org|viaf\.org|isbnsearch\.org)$/.test(url.hostname)) continue;
+			const safeHref = value.replace(/"/g, '&quot;').replace(/</g, '&lt;');
+			const domain = url.hostname.replace(/^www\./, '');
+			return `<div class="wh-source-action"><a class="wh-source-visit" href="${safeHref}" target="_blank" rel="noopener noreferrer">Visit source <span>${domain}</span></a></div>`;
+		} catch { /* Relative links and malformed URLs cannot become source CTAs. */ }
+	}
+	return '';
+
 }
 
 // A handful of named character references an attacker could use to spell a scheme or its

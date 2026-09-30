@@ -3,6 +3,7 @@
 	import { reader } from '$lib/reader/readerState.svelte';
 	import { articleTitleFromHref } from '$lib/wikipedia/links';
 	import { localArticleAnchor } from '$lib/reader/anchors';
+	import { ARTICLE_RENDER_VERSION } from '$lib/reader/version';
 	import LinkPreview from './LinkPreview.svelte';
 	import { X } from '@lucide/svelte';
 
@@ -15,7 +16,23 @@
 
 	let asideEl = $state<HTMLElement | null>(null);
 	let contentEl = $state<HTMLElement | null>(null);
+	let bodyEl = $state<HTMLElement | null>(null);
+
+	function scrollReaderTo(target: Element): void {
+		if (!bodyEl) return;
+		bodyEl.scrollTo({ top: bodyEl.scrollTop + target.getBoundingClientRect().top - bodyEl.getBoundingClientRect().top, behavior: 'instant' });
+	}
+
+	function openSources(): void {
+		const sources = contentEl?.querySelectorAll<HTMLElement>('.wh-sources, .wh-bibliography');
+		if (!sources?.length) return;
+		for (const source of sources) if (source instanceof HTMLDetailsElement) source.open = true;
+		const destination = [...sources].find((source) => source.querySelector('.wh-source-visit')) ?? sources[0];
+		scrollReaderTo(destination);
+		destination.querySelector<HTMLElement>('summary, .wh-source-visit')?.focus({ preventScroll: true });
+	}
 	let articleHtml = $state<string | null>(null);
+	const hasSources = $derived(/class="[^"]*\bwh-(?:sources|bibliography)\b/.test(articleHtml ?? ''));
 	let htmlLoading = $state(false);
 	let htmlError = $state(false);
 	// Full-screen image view. Tapping a content image (figure/thumbnail/infobox) opens
@@ -39,7 +56,7 @@
 		articleHtml = null;
 		htmlLoading = true;
 		htmlError = false;
-		fetch(`/api/article?title=${encodeURIComponent(title)}`, { signal: controller.signal })
+		fetch(`/api/article?title=${encodeURIComponent(title)}&v=${ARTICLE_RENDER_VERSION}`, { signal: controller.signal })
 			.then((res) => res.json())
 			.then((data: { html: string | null }) => {
 				if (data.html) articleHtml = data.html;
@@ -126,7 +143,7 @@
 				for (let parent = target.parentElement; parent && parent !== el; parent = parent.parentElement) {
 					if (parent instanceof HTMLDetailsElement) parent.open = true;
 				}
-				target.scrollIntoView({ block: 'start' });
+				scrollReaderTo(target);
 				return;
 			}
 
@@ -221,8 +238,8 @@
 	bind:this={asideEl}
 	tabindex="-1"
 	aria-label="Article reader"
-	class="animate-rise fixed inset-0 z-40 flex flex-col bg-void text-ink focus:outline-none
-		lg:sticky lg:inset-auto lg:top-16 lg:z-auto lg:h-[calc(100dvh-5rem)] lg:flex-1
+	class="article-reader animate-rise fixed inset-0 z-40 flex flex-col bg-void text-ink focus:outline-none
+		lg:sticky lg:inset-auto lg:z-auto lg:flex-1
 		lg:min-w-0 lg:overflow-hidden lg:rounded-[var(--radius-card)] lg:border lg:border-hair
 		lg:shadow-card"
 >
@@ -235,6 +252,9 @@
 		<h2 class="font-display flex-1 text-xl leading-snug font-semibold tracking-tight text-ink">
 			{current}
 		</h2>
+		{#if hasSources}
+			<button type="button" onclick={openSources} class="min-h-11 shrink-0 rounded-full px-3 text-xs font-medium text-accent hover:bg-surface-2">Sources</button>
+		{/if}
 		<button
 			type="button"
 			onclick={() => reader.close()}
@@ -248,7 +268,8 @@
 
 	<!-- Scrollable body. Bottom padding clears the home indicator on mobile. -->
 	<div
-		class="flex-1 overflow-y-auto px-4 pt-6 sm:px-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))]"
+		bind:this={bodyEl}
+		class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-4 sm:px-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))]"
 	>
 		{#if htmlLoading}
 			<div class="space-y-2.5" aria-hidden="true">
@@ -325,3 +346,14 @@
 		{/if}
 	</div>
 {/if}
+
+<style>
+	@media (min-width: 1024px) {
+		.article-reader {
+			top: var(--reader-top, calc(var(--app-header-height, 4.3125rem) + 0.75rem));
+			height: var(--reader-height, calc(100dvh - var(--app-header-height, 4.3125rem) - 1.5rem));
+			animation: none;
+			align-self: flex-start;
+		}
+	}
+</style>

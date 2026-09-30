@@ -38,8 +38,11 @@ export const POST: RequestHandler = async ({ request, setHeaders }) => {
 	if (!from) return json({ article: null, error: 'missing fromTitle' }, { status: 400 });
 
 	const interest = body.interest ?? { tokenWeights: {}, tokenDocFreq: {} };
-	const session = body.session ?? { seenTitles: [] };
 	const related = body.mode === 'related';
+	const suppliedSession = body.session ?? { seenTitles: [] };
+	// mode=related is an explicit steering action, including for older clients
+	// that omit the optional noSurprise session flag.
+	const session = related ? { ...suppliedSession, noSurprise: true } : suppliedSession;
 	const key = `links:${related ? 'related' : 'explore'}:${from}`;
 
 	let candidates;

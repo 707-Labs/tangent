@@ -639,18 +639,15 @@ body::before {
  * table reads as a full-width dark-theme table once opened.
  */
 .wiki-content .quick-facts {
-	/* Full-width row in the reading column (Ben's Figma reader): the reader pane
-	   is already a bounded column, so the old 24rem centering cap just made the
-	   drawer look like a stray card. Collapsed it reads as a raised row
-	   (surface-2); opened it settles back to the card surface. */
-	margin: 1.4em 0;
-	border: 1px solid var(--color-hair);
-	border-radius: var(--radius-card);
-	background: var(--color-surface);
-	overflow: hidden;
+	/* The reader already frames this content; a full-width disclosure only needs
+	   horizontal rules, not another padded card around the fact table. */
+	margin: 1em 0;
+	border-block: 1px solid var(--color-hair);
+	background: transparent;
+	overflow-x: auto;
 }
 .wiki-content .quick-facts:not([open]) {
-	background: var(--color-surface-2);
+	background: transparent;
 }
 .wiki-content .quick-facts > summary {
 	cursor: pointer;
@@ -658,7 +655,8 @@ body::before {
 	display: flex;
 	align-items: center;
 	gap: 0.75rem;
-	padding: 1rem 1.25rem;
+	min-height: 2.75rem;
+	padding: 0.65rem 0;
 	font-family: var(--font-body);
 	font-size: 0.8125rem;
 	font-weight: 600;
@@ -753,10 +751,10 @@ body::before {
    single-`td` row (the lead image, a full-width banner) has nothing to linearize, and flipping
    its cell to `display:block` would strip the table layout that lets `margin-inline:auto` center
    the image — leaving it pinned left. */
-.wiki-content .quick-facts tr:not(:has(th)):has(td + td) {
+.wiki-content .quick-facts > table > tbody > tr:not(:has(th)):has(td + td):not(:has(> [rowspan], > [colspan])) {
 	display: block;
 }
-.wiki-content .quick-facts tr:not(:has(th)):has(td + td) > td {
+.wiki-content .quick-facts > table > tbody > tr:not(:has(th)):has(td + td):not(:has(> [rowspan], > [colspan])) > td {
 	display: block;
 	width: auto !important;
 	/* Drop the inline column dividers (`border-right:1px dotted`) and row rules — once the
@@ -1559,4 +1557,101 @@ body::before {
 	min-width: 0 !important;
 	overflow-x: auto !important;
 	margin-inline: auto;
+}
+
+/* Compact article opening: portrait lead plates no longer consume the viewport.
+   Native geometry stays intact; image maps and mathematical glyphs retain their rules. */
+.wiki-content figure {
+	margin-block: 1.15em;
+}
+.wiki-content figure.infobox-lead {
+	margin-top: 0;
+}
+.wiki-content figure.infobox-lead img:not([usemap]) {
+	width: auto;
+	height: auto;
+	max-height: min(32dvh, 18rem);
+	object-fit: contain;
+}
+.wiki-content figcaption {
+	margin-top: 0.5rem;
+	line-height: 1.5;
+}
+.wiki-content .quick-facts > table {
+	display: table;
+	float: none !important;
+	border-collapse: collapse;
+	line-height: 1.5;
+}
+.wiki-content .quick-facts > table > tbody > tr > th:not([colspan]):not([rowspan]) {
+	width: 32%;
+	padding: 0.5rem 0.75rem 0.5rem 0;
+	text-align: left;
+}
+.wiki-content .quick-facts > table > tbody > tr > td {
+	padding: 0.5rem 0;
+}
+/* Nested layouts remain real tables; only top-level simple data rows may stack. */
+.wiki-content .quick-facts table table {
+	display: table;
+}
+.wiki-content .wh-sources > summary {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	min-height: 2.75rem;
+	list-style: none;
+}
+.wiki-content .wh-sources > summary::-webkit-details-marker {
+	display: none;
+}
+.wiki-content .wh-disclosure-hide,
+.wiki-content .wh-sources[open] .wh-disclosure-show {
+	display: none;
+}
+.wiki-content .wh-sources[open] .wh-disclosure-hide {
+	display: inline;
+}
+.wiki-content .wh-disclosure-show,
+.wiki-content .wh-disclosure-hide {
+	font-family: var(--font-body);
+	font-size: 0.75rem;
+	color: var(--color-accent);
+}
+.wiki-content :is(.wh-sources, .wh-bibliography) a.wh-external::after {
+	content: none;
+}
+.wiki-content :is(.wh-sources, .wh-bibliography) :is(.cs1-maint, .cs1-hidden-error, .cs1-visible-error) {
+	display: none !important;
+}
+.wiki-content .mw-cite-backlink {
+	display: block;
+	font-family: var(--font-body);
+	font-size: 0.7rem;
+	margin-top: 0.75rem;
+}
+.wiki-content .mw-cite-backlink a + a {
+	margin-left: 0.5rem;
+}
+.wiki-content .wh-source-action {
+	margin: 0.5rem 0 1rem;
+}
+.wiki-content .wh-source-visit {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+	min-height: 2.75rem;
+	padding: 0.35rem 0.75rem;
+	border: 1px solid var(--color-hair-strong);
+	background: var(--color-surface-2);
+	border-radius: 0.4rem;
+	font-family: var(--font-body);
+	font-size: 0.8rem;
+	font-weight: 600;
+	text-decoration: none;
+}
+.wiki-content .wh-source-visit span {
+	font-size: 0.7rem;
+	font-weight: 400;
+	color: var(--color-faint);
 }

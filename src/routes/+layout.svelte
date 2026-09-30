@@ -69,19 +69,32 @@
 
 	let profileOpen = $state(false);
 	let accountOpen = $state(false);
+	let header = $state<HTMLElement | null>(null);
+	let headerHeight = $state<number | null>(null);
+
+	$effect(() => {
+		if (!header) return;
+		const element = header;
+		const measure = () => (headerHeight = element.getBoundingClientRect().height);
+		measure();
+		const observer = new ResizeObserver(measure);
+		observer.observe(element);
+		return () => observer.disconnect();
+	});
 
 	// Reading widens the shell into a two-pane split (feed + article). Stays the
 	// narrow reading column otherwise, and on narrow screens where the reader is a
 	// full-screen takeover rather than a side pane.
-	const shellWidth = $derived(page.url.pathname === '/' && reader.isOpen ? 'max-w-2xl lg:max-w-7xl' : 'max-w-2xl');
+	const isMap = $derived(page.url.pathname === '/graph');
+	const shellWidth = $derived(isMap ? 'max-w-none' : page.url.pathname === '/' && reader.isOpen ? 'max-w-2xl lg:max-w-7xl' : 'max-w-2xl');
 </script>
 
-<div class="flex min-h-dvh flex-col">
+<div class="flex min-h-dvh flex-col" style:--app-header-height={headerHeight === null ? 'calc(69px + env(safe-area-inset-top))' : `${headerHeight}px`}>
 	<!-- Full-bleed bar: the border spans the viewport; only the inner row is
 	     constrained to the reading column so the nav doesn't float mid-screen.
 	     The inner row's max-width morphs when the reader opens — a deliberate
 	     one-shot layout transition (not per-frame); reduced-motion snaps it. -->
-	<header class="sticky top-0 z-20 border-b border-hair bg-void pt-[env(safe-area-inset-top)]">
+	<header bind:this={header} class="sticky top-0 z-20 border-b border-hair bg-void pt-[env(safe-area-inset-top)]">
 		<div
 			class="mx-auto flex w-full items-center justify-between px-4 py-3
 				transition-[max-width] duration-200 ease-out {shellWidth}"
@@ -195,7 +208,7 @@
 	</header>
 
 	<main
-		class="mx-auto w-full flex-1 px-4 py-6 transition-[max-width] duration-200 ease-out {shellWidth}"
+		class={isMap ? 'w-full min-h-0 flex-1' : `mx-auto w-full flex-1 px-4 py-6 transition-[max-width] duration-200 ease-out ${shellWidth}`}
 	>
 		{@render children()}
 	</main>
@@ -203,6 +216,7 @@
 	<!-- Attribution + legal small-print. Sits below the fold on the infinite feed
 	     (the in-feed entry point is in the interests popover); fully reachable on the
 	     start and about pages. -->
+	{#if !isMap}
 	<footer class="border-t border-hair">
 		<div
 			class="mx-auto flex max-w-2xl flex-col gap-3 px-4 py-5 text-xs text-faint sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-5 sm:gap-y-2"
@@ -243,4 +257,5 @@
 			</nav>
 		</div>
 	</footer>
+	{/if}
 </div>
