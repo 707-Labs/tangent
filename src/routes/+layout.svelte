@@ -98,7 +98,8 @@
 				     (persisted trail), so mid-feed it opens the map of where you are. -->
 				<a
 					href="/graph"
-					aria-label="Graph view"
+					aria-label="Explore the article graph"
+					title="Explore the article graph"
 					aria-current={page.url.pathname === '/graph' ? 'page' : undefined}
 					class="icon-btn inline-flex items-center justify-center rounded-full p-1.5
 						transition-colors hover:bg-surface-2 hover:text-ink
@@ -116,6 +117,7 @@
 						type="button"
 						onclick={() => trailPanel.toggle()}
 						aria-label="Your trail, {seenCount} articles"
+						title="Your reading trail"
 						aria-haspopup="dialog"
 						class="icon-btn inline-flex items-center gap-1 rounded-full p-1.5
 							text-muted transition-colors hover:bg-surface-2 hover:text-ink"
@@ -132,17 +134,18 @@
 					</button>
 				{/if}
 
-				<!-- Profile affordance: opens the interests panel (feed tuning, no account). -->
+				<!-- Settings includes feed preferences, appearance, and account sync. -->
 				<button
 					type="button"
 					onclick={() => (profileOpen = !profileOpen)}
-					aria-label="Your interests"
+					aria-label="Settings: interests, appearance, and account"
+					title="Settings: interests, appearance, and account"
 					aria-expanded={profileOpen}
 					aria-haspopup="dialog"
 					class="icon-btn inline-flex items-center justify-center rounded-full p-1.5
 						text-muted transition-colors hover:bg-surface-2 hover:text-ink"
 				>
-					<!-- Interests: tuning sliders — the panel tunes your feed (no account). -->
+					<!-- Sliders identify the settings panel. -->
 					<SlidersHorizontal class="size-5" aria-hidden="true" />
 				</button>
 
@@ -163,7 +166,7 @@
 					href="/start"
 					data-cta
 					aria-label="New tangent"
-					class="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border
+					class="inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border
 						border-hair bg-read px-3 py-1.5 text-sm font-medium text-surface-2 transition-all
 						hover:opacity-90 active:scale-95"
 				>

@@ -138,8 +138,8 @@
 	// loading skeleton placeholder (for responsiveness — see handleDive), and an instant
 	// snap lands deterministically on the card's current position before its body streams
 	// in and grows it downward. (A smooth scroll also proved flaky under test, silently
-	// never moving.) Branch/jump/trail navigate to already-resolved cards and keep the
-	// nicer smooth scroll.
+	// never moving.) Branches also snap directly to their newly appended card;
+	// jump/trail navigation keeps the smoother transition between resolved cards.
 	async function goToCard(id: string, opts: { instant?: boolean } = {}) {
 		// Navigating to a card means you want to see that card — close the reader first
 		// (it would otherwise stay open over the destination) and let the layout settle
@@ -159,7 +159,9 @@
 
 	async function handleBranch(card: FeedCard) {
 		const id = await feed.branchFrom(card);
-		if (id) await goToCard(id);
+		// The new card may be several screens away. Snap to it like an explicit
+		// dive so steering lands reliably rather than waiting on a long smooth scroll.
+		if (id) await goToCard(id, { instant: true });
 	}
 
 	function handleRead(card: FeedCard) {

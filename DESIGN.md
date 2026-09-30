@@ -122,7 +122,7 @@ Layout defined in `src/routes/+layout.svelte`.
 
 **Navigation pattern:** sticky **top bar** (full-bleed border, inner row constrained to the
 reading column). Header holds the BrandMark (home), a Trail toggle (appears once you're past the
-seed), an Interests/feed-tuning popover, and a "New tangent" CTA. A footer carries Wikipedia
+seed), a Settings panel for interests/appearance/account, and a "New tangent" CTA. A footer carries Wikipedia
 attribution (CC BY-SA 4.0) + About / Terms / Source links.
 
 **Shell width:** content is a narrow reading column (`max-w-2xl`). Opening the article reader
@@ -140,6 +140,13 @@ morphs the shell into a two-pane split (`lg:max-w-7xl`) via a one-shot `transiti
 | `/terms` | Terms of Use + Privacy in one plain-language page. |
 | `/auth/verify` | Magic-link verification landing (sign-in token check; shows recovery copy on a spent/expired link). |
 
+The start page prioritizes search, immediate surprise, and mood choices above daily
+picks. Search dismisses on Escape or blur and selects only results matching the
+current query. Daily picks enrich surprise only once available.
+
+Feed cards place the thumbnail beside the title and description. Summary text
+uses the full width below that row so phone-sized reading columns stay readable.
+
 ---
 
 ## Components
@@ -149,7 +156,7 @@ morphs the shell into a two-pane split (`lg:max-w-7xl`) via a one-shot `transiti
 - **Feed & reading** — `ArticleCard` (one article in the rabbit-hole stream; like/dive actions; joins the trail on first view), `ArticleReader` (full-article reading pane; opens the two-pane split), `SkeletonCard` (feed-card loading placeholder), `ActionHint` (one-time orientation for the Like / Dive actions), `LinkPreview` (hover peek of an in-article link — pointer-fine only, inert on touch).
 - **Trail & connections** — `TrailPanel` (the trail of articles you've actually reached; jump back to waypoints), `ConnectionBreadcrumb` ("came from" link back to a card's source), `RelationIcon` (geometric icon for a connection's relation type — the shared node/edge/point vocabulary).
 - **Brand & chrome** — `BrandMark` (wordmark + tangent-line logo with the lone ember dot at the touch-point), `Drawer` (accessible native `<dialog>` slide-in panel primitive; focus-restoring close).
-- **Settings & account** — `ProfilePanel` (interests popover: feed-tuning sliders + account), `AccountSection` (magic-link sign-in / account block inside the profile panel), `ThemePicker` (theme selector with mini live previews of each theme).
+- **Settings & account** — `ProfilePanel` (Settings drawer: appearance, feed flavor, learned interests, and account), `AccountSection` (magic-link sign-in / account block inside the profile panel), `ThemePicker` (theme selector with mini live previews of each theme).
 
 ---
 
