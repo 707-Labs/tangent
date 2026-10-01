@@ -5,14 +5,11 @@
 
 	let {
 		trail,
-		presentIds,
-		onClose,
+				onClose,
 		onSelect
 	}: {
 		trail: TrailNode[];
-		/** Card ids actually in the feed — trail nodes outside this set aren't navigable. */
-		presentIds: Set<string>;
-		onClose: () => void;
+				onClose: () => void;
 		onSelect: (id: string) => void;
 	} = $props();
 </script>
@@ -21,10 +18,9 @@
 	{#snippet children(close)}
 		<div class="py-2">
 			{#each trail as node (node.id)}
-				<!-- Nodes dropped during rehydration have no card to scroll to — shown but inert. -->
+				<!-- Older waypoints load their article on demand. -->
 				<button
 					type="button"
-					disabled={!presentIds.has(node.id)}
 					onclick={() => {
 						onSelect(node.id);
 						close();

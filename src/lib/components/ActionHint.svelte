@@ -33,12 +33,12 @@
 			</li>
 			<li class="flex items-start gap-2">
 				<Star class="mt-0.5 size-4 shrink-0 text-faint" aria-hidden="true" />
-				<span>Star a topic to tune future suggestions.</span>
+				<span>Star an article to save it.</span>
 			</li>
 			<li class="flex items-start gap-2">
 				<ArrowRight class="mt-0.5 size-4 shrink-0 text-faint" aria-hidden="true" />
 				<span
-					><span class="font-medium text-ink">Explore</span> continues from this topic.</span
+					><span class="font-medium text-ink">Explore</span> lets you choose the next topic.</span
 				>
 			</li>
 		</ul>

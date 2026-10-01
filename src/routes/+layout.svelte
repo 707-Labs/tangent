@@ -10,11 +10,14 @@
 	import '@fontsource/newsreader/500.css';
 	import '@fontsource/newsreader/600.css';
 	import '@fontsource/newsreader/400-italic.css';
+	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import SavedPanel from '$lib/components/SavedPanel.svelte';
+	import { savedArticles } from '$lib/saved/saved.svelte';
 	import BrandMark from '$lib/components/BrandMark.svelte';
 	import ProfilePanel from '$lib/components/ProfilePanel.svelte';
 	import AccountPanel from '$lib/components/AccountPanel.svelte';
-	import { Route, SlidersHorizontal, Plus, Waypoints } from '@lucide/svelte';
+	import { Route, SlidersHorizontal, Plus, Waypoints, Star } from '@lucide/svelte';
 	import { profile } from '$lib/engagement/profile.svelte';
 	import { reader } from '$lib/reader/readerState.svelte';
 	import { feed } from '$lib/feed/feedState.svelte';
@@ -38,6 +41,7 @@
 	// server) once instead of the steady-state revision-guarded pull, then strip the param so a
 	// reload doesn't re-merge.
 	onMount(() => {
+		savedArticles.load();
 		const justSignedIn = page.url.searchParams.get('signin') === '1';
 		void auth.refresh().then(() => {
 			if (!auth.isAuthed) return;
@@ -89,6 +93,8 @@
 	const shellWidth = $derived(isMap ? 'max-w-none' : page.url.pathname === '/' && reader.isOpen ? 'max-w-2xl lg:max-w-7xl' : 'max-w-2xl');
 </script>
 
+{#if savedArticles.isOpen}<SavedPanel onOpen={(title) => { if (page.url.pathname === '/' || page.url.pathname === '/graph') reader.open(title); else void goto(`/?seed=${encodeURIComponent(title)}&reader=${encodeURIComponent(title)}`); }} />{/if}
+
 <div class="flex min-h-dvh flex-col" style:--app-header-height={headerHeight === null ? 'calc(69px + env(safe-area-inset-top))' : `${headerHeight}px`}>
 	<!-- Full-bleed bar: the border spans the viewport; only the inner row is
 	     constrained to the reading column so the nav doesn't float mid-screen.
@@ -125,6 +131,7 @@
 					<Waypoints class="size-5" aria-hidden="true" />
 				</a>
 
+					<button type="button" onclick={() => savedArticles.open()} aria-label="Saved articles" title="Saved articles" class="flex size-11 shrink-0 items-center justify-center rounded-full text-muted hover:bg-surface-2 hover:text-ink"><Star class="size-5" aria-hidden="true" /></button>
 				<!-- Trail: opens the panel of articles you've actually reached. Hidden until
 				     you're past the seed; a subtle count badge stands in for the old chip. -->
 				{#if showTrail}

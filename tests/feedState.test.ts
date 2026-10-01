@@ -21,6 +21,30 @@ function deferred<T>() {
 describe('dive loading', () => {
 	afterEach(() => { vi.unstubAllGlobals(); vi.resetModules(); });
 
+	it.each(['success', 'failure'] as const)('ignores a stale seed %s after a newer seed resolves', async (outcome) => {
+		vi.stubGlobal('$state', <T>(value: T) => value);
+		const stale = deferred<Response>();
+		const links = deferred<Response>();
+		vi.stubGlobal('fetch', vi.fn((url: string) => {
+			if (url.startsWith('/api/links')) return links.promise;
+			const title = new URL(url, 'http://localhost').searchParams.get('title')!;
+			return title === 'Black hole' ? stale.promise : Promise.resolve(Response.json({ article: article(title) }));
+		}));
+		const { feed } = await import('../src/lib/feed/feedState.svelte');
+		const oldStart = feed.start('Black hole');
+		await feed.start('Coffee');
+		const originalTrail = [...feed.trail];
+		stale.resolve(outcome === 'success' ? Response.json({ article: article('Black hole') }) : new Response('', { status: 500 }));
+		await oldStart;
+		expect(feed.seedTitle).toBe('Coffee');
+		expect(feed.displayTitle).toBe('Coffee');
+		expect(feed.cards.map((card) => card.article.title)).toEqual(['Coffee']);
+		expect(feed.trail).toEqual(originalTrail);
+		expect(feed.status).toBe('ready');
+		expect(feed.error).toBeNull();
+		links.resolve(Response.json({ candidates: [] }));
+	});
+
 	it('displays a resolved dive while an old prefetch is blocked, then discards its result', async () => {
 		// Test actual FeedState methods without DOM subscriptions: $state fields
 		// behave as ordinary mutable fields for this request-ordering regression.

@@ -90,7 +90,7 @@ class FeedState {
 	 * Clears any stored trail from a different seed (X→Y→X resurrection fix).
 	 */
 	async start(seedTitle: string): Promise<void> {
-		this.#abortToken++;
+		const token = ++this.#abortToken;
 		if (browser) {
 			const stored = loadTrail();
 			if (stored && stored.seedTitle !== seedTitle) clearTrail();
@@ -107,6 +107,9 @@ class FeedState {
 		this.showStartOver = false;
 
 		const result = await fetchCardApi(seedTitle, true);
+		// A newer seed, rehydration, or dive owns the feed now. Ignore both stale
+		// success and failure before mutating cards, persisted trail, or error state.
+		if (token !== this.#abortToken) return;
 		if (!result.ok) {
 			this.status = 'error';
 			this.error = `Couldn't open "${seedTitle}". Try another starting point.`;
@@ -301,6 +304,22 @@ class FeedState {
 		return true;
 	}
 
+	/** Older waypoints remain accessible without fetching the entire trail on reload. */
+	async ensureCard(id: string): Promise<boolean> {
+		if (this.cards.some((card) => card.id === id)) return true;
+		const node = this.trail.find((entry) => entry.id === id);
+		if (!node) return false;
+		const token = this.#abortToken;
+		const result = await fetchCardApi(node.title, true);
+		if (!result.ok || token !== this.#abortToken) return false;
+		if (!this.cards.some((card) => card.id === id)) {
+			const cards = [...this.cards, this.#cardFromNode(result.data, node)];
+			const order = new Map(this.trail.map((entry, index) => [entry.id, index]));
+			this.cards = cards.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+		}
+		return true;
+	}
+
 	/**
 	 * Attempt a related jump from the chain tip before giving up.
 	 * Called from the exhausted state to offer one more hop before start-over.
@@ -345,6 +364,17 @@ class FeedState {
 	retune(): void {
 		this.#buffer = [];
 		if (this.status === 'ready') void this.#refill();
+	}
+
+	/** Feedback changes future suggestions without removing the user's trail. */
+	reconsider(): void {
+		this.#buffer = [];
+		// A pending dive has already invalidated the old pipeline. Its resolution
+		// refills using the current profile; leave its request token intact.
+		if (this.cards.at(-1)?.pending || this.status === 'loading' || !this.cards.length) return;
+		this.#abortToken++;
+		this.status = 'ready';
+		void this.#refill();
 	}
 
 	#refill(): Promise<void> {

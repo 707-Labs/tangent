@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { onMount, onDestroy, untrack } from 'svelte';
 	import { page } from '$app/state';
+	import { pushState, replaceState } from '$app/navigation';
+	import { neighborhoodsIn, DISCOVERY_ROUTES, rankConnections, parseMapVisit, type Neighborhood } from '$lib/graph/discovery';
 	import { Plus, Minus, Scan, X, Search, ArrowRight, RotateCw } from '@lucide/svelte';
 	import type { Article, SearchResult } from '$lib/wikipedia/types';
 	import { reader } from '$lib/reader/readerState.svelte';
@@ -21,6 +23,15 @@
 	let hoveredNode = $state.raw<WorldNode | null>(null);
 	let selected = $state<string | null>(null);
 	let trail = $state<string[]>([]);
+	let activeRegion = $state<string | null>(null);
+	let activeNeighborhood = $state<string | null>(null);
+	let routeId = $state<string | null>(null);
+	let discoveryOpen = $state(false);
+	let connectionsOpen = $state(false);
+	let restoredCamera = false;
+	let restoringSelection = false;
+	let historyReady = $state(false);
+	let mounted = false;
 	let loading = $state(false);
 	let error = $state<string | null>(null);
 	let article = $state<Article | null>(null);
@@ -44,23 +55,38 @@
 	const focus = $derived(selected ? byTitle.get(selected) ?? null : null);
 	const viewport = $derived({ width, height });
 	const visible = $derived(visibleNodes(nodes, camera, viewport, selected));
-	const regionLabels = $derived(camera.k < 0.3 ? REGIONS.map((region) => ({ region, point: project(region, camera) }))
+	const regionLabels = $derived(camera.k < 0.18 ? REGIONS.map((region) => ({ region, point: project(region, camera) }))
 		.filter(({ point }) => point.x > -120 && point.x < width + 120 && point.y > -50 && point.y < height + 50) : []);
+	const neighborhoodLabels = $derived.by(() => {
+		if (camera.k < .18 || camera.k > .65) return [];
+		const boxes: { x: number; y: number }[] = [];
+		return neighborhoodsIn(byTitle).flatMap((item) => {
+			const point = project(byTitle.get(item.anchor)!, camera);
+			if (point.x < 90 || point.x > width - 90 || point.y < 180 || point.y > height - 90 || boxes.some((box) => Math.abs(box.x - point.x) < 170 && Math.abs(box.y - point.y) < 60)) return [];
+			boxes.push(point); return [{ item, point }];
+		});
+	});
 	const labels = $derived.by(() => {
 		const reserved = regionLabels.map(({ region, point }) => {
 			const labelWidth = region.label.length * 10 + 20;
 			return { x: point.x - labelWidth / 2, y: point.y - 79, width: labelWidth, height: 44 };
 		});
+		for (const { point } of neighborhoodLabels) reserved.push({ x: point.x - 90, y: point.y - 79, width: 180, height: 44 });
 		if (focus) {
 			const point = project(focus, camera);
 			reserved.push({ x: point.x - 38, y: point.y - 38, width: 76, height: 76 });
 		}
 		return visibleLabels(visible, camera, selected, reserved);
 	});
-	const connections = $derived(focus?.neighbors.map((title) => byTitle.get(title)).filter((node): node is WorldNode => !!node) ?? []);
+	const connections = $derived(rankConnections(focus?.neighbors.map((title) => byTitle.get(title)).filter((node): node is WorldNode => !!node) ?? [], trail));
+	const neighborhoods = $derived(neighborhoodsIn(byTitle, activeRegion ?? undefined));
+	const activeRoute = $derived(DISCOVERY_ROUTES.find((item) => item.id === routeId));
+	const routeIndex = $derived(activeRoute ? activeRoute.stops.findIndex((title) => title === selected) : -1);
+	const currentRegion = $derived(REGIONS.find((item) => item.id === activeRegion));
+	const currentNeighborhood = $derived(neighborhoods.find((item) => item.anchor === activeNeighborhood));
 	const lines = $derived.by(() => {
 		const pairs: { from: WorldNode; to: WorldNode; trail: boolean }[] = [];
-		if (focus) for (const title of focus.neighbors.slice(0, 30)) {
+		if (focus) for (const title of connections.slice(0, 8).map((node) => node.title)) {
 			const destination = byTitle.get(title);
 			if (destination) pairs.push({ from: focus, to: destination, trail: false });
 		}
@@ -139,7 +165,7 @@
 				selected = canonicalTitle(selected);
 				trail = trail.reduce<string[]>((visits, visit) => appendVisit(visits, canonicalTitle(visit)), []);
 				const node = nodes.find((item) => item.title === selected);
-				if (node && !showingOverview) move(centeredCamera(node, viewport, camera.k), false);
+				if (node && !showingOverview && !restoringSelection) move(centeredCamera(node, viewport, camera.k), false);
 			}
 		} catch { /* Existing live exploration remains available when the static atlas fails. */ }
 		finally { clearTimeout(deadline); if (!disposed) atlasLoading = false; }
@@ -148,14 +174,28 @@
 	// Canvas points, DOM labels, and hit testing share the same immediate camera.
 	// Coordinate CSS transitions would separate labels from their actual points.
 	function move(next: Camera, _smooth = false) { camera = next; }
-	function overview() { closeSelection(); showingOverview = true; move(overviewCamera(viewport)); }
+	function overview() { activeRegion = null; activeNeighborhood = null; closeSelection(); showingOverview = true; move(overviewCamera(viewport)); }
 	function showRegion(id: string) {
 		const region = REGIONS.find((item) => item.id === id);
 		if (!region) return;
+		activeRegion = id;
+		activeNeighborhood = null;
+		discoveryOpen = true;
 		showingOverview = false;
 		closeSelection();
 		const k = Math.min(0.7, Math.max(0.09, Math.min((width - 60) / 2200, (height - 150) / 2200)));
 		move({ x: width / 2 - region.x * k, y: height / 2 - region.y * k, k });
+	}
+	function showNeighborhood(item: Neighborhood) {
+		const node = byTitle.get(item.anchor);
+		if (!node) return;
+		activeRegion = item.region; activeNeighborhood = item.anchor; discoveryOpen = false;
+		select(node);
+	}
+	function startRoute(id: string) {
+		const route = DISCOVERY_ROUTES.find((item) => item.id === id);
+		if (!route) return;
+		routeId = id; discoveryOpen = false; dive(route.stops[0]);
 	}
 	function center(node: WorldNode, zoom = Math.max(0.75, camera.k)) {
 		showingOverview = false;
@@ -221,29 +261,40 @@
 			if (!disposed && version === selectionVersion) loading = false;
 		}
 	}
-	function select(info: SearchResult | WorldNode) {
+	function select(info: SearchResult | WorldNode, restore = false) {
+		connectionsOpen = false;
 		info = { ...info, title: canonicalTitle(info.title) };
-		reader.close();
+		reader.restore(null);
 		clearTimeout(idleTimer);
+		if (mounted && !restore) replaceMapHistory();
 		nodes = importNode(nodes, info);
 		selected = info.title;
-		trail = appendVisit(trail, info.title);
+		activeRegion = byTitle.get(info.title)?.region ?? activeRegion;
+		if (!restore && activeNeighborhood && info.title !== activeNeighborhood && !byTitle.get(activeNeighborhood)?.neighbors.includes(info.title)) activeNeighborhood = null;
+		if (!restore) trail = appendVisit(trail, info.title);
 		const node = nodes.find((item) => item.title === info.title)!;
-		center(node);
+		if (!restore) center(node);
+		if (mounted && historyReady && !restore) { const url = new URL(window.location.href); url.searchParams.set('seed', info.title); url.searchParams.delete('reader'); pushState(url, { ...page.state, mapVisit: mapSnapshot() }); }
 		searchOpen = false;
 		article = atlasArticles.get(info.title) ?? null;
 		void loadSelection(info.title, ++selectionVersion);
 	}
 	function dive(title: string) {
 		title = canonicalTitle(title);
-		reader.close();
+		reader.restore(null);
 		nodes = importNode(nodes, { title, description: null, thumbnail: null }, focus ?? undefined);
 		select(nodes.find((node) => node.title === title)!);
 	}
 	function closeSelection() {
 		selectionVersion++;
 		selected = null;
-		reader.close();
+		reader.restore(null);
+		// Overview/region callers also move the camera in this turn. Snapshot the final pose.
+		if (mounted) queueMicrotask(() => {
+			if (!mounted || !historyReady || selected) return;
+			const url = new URL(window.location.href); url.searchParams.delete('seed'); url.searchParams.delete('reader');
+			replaceState(url, { ...page.state, mapVisit: mapSnapshot() });
+		});
 		loading = false;
 		clearTimeout(idleTimer);
 	}
@@ -366,24 +417,75 @@
 		else if (event.key === 'Home' || event.key === '0') { event.preventDefault(); overview(); }
 		else if (event.key === 'Escape') closeSelection();
 	}
+	function mapSnapshot() { return { selected, trail: [...trail], camera: { ...camera }, region: activeRegion, neighborhood: activeNeighborhood, reader: reader.current }; }
+	function replaceMapHistory() {
+		if (mounted && historyReady) replaceState('', { ...page.state, mapVisit: { ...mapSnapshot(), reader: new URL(window.location.href).searchParams.get('reader') } });
+	}
 	onMount(() => {
-		reader.close();
+		mounted = true;
+		reader.restore(null);
 		atlasReady = loadAtlas();
 		const themeObserver = new MutationObserver(() => { themeVersion++; });
 		themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class'] });
 		const requested = page.url.searchParams.get('seed');
 		const stored = loadTrail();
-		const title = requested ?? (stored ? chainTip(stored.trail)?.title : null);
-		if (title) select({ title, description: null, thumbnail: null });
+		let saved = parseMapVisit(page.state.mapVisit);
+		try { saved ??= parseMapVisit(JSON.parse(localStorage.getItem('tangent-map-visit') ?? 'null')); } catch { /* Storage can be unavailable. */ }
+		const title = requested ?? saved?.selected ?? (stored ? chainTip(stored.trail)?.title : null);
+		if (saved && (!requested || requested === saved.selected)) {
+			trail = saved.trail; activeRegion = saved.region; activeNeighborhood = saved.neighborhood;
+			if (title) select({ title, description: null, thumbnail: null }, true);
+			camera = saved.camera; showingOverview = false; restoredCamera = true; restoringSelection = true;
+		} else if (title) { select({ title, description: null, thumbnail: null }, true); showingOverview = false; }
+		reader.restore(new URL(window.location.href).searchParams.get('reader'));
+		// Kit initializes its router after the mount microtask; defer the first shallow write.
+		const initializeHistory = setTimeout(() => {
+			if (!mounted) return;
+			replaceState('', { ...page.state, mapVisit: mapSnapshot() });
+			historyReady = true;
+		}, 0);
+		reader.onChange = (title) => {
+			if (!historyReady) return;
+			replaceMapHistory(); const url = new URL(window.location.href);
+			if (title) url.searchParams.set('reader', title); else url.searchParams.delete('reader');
+			pushState(url, { ...page.state, mapVisit: mapSnapshot() });
+		};
 		const target = stage;
 		target?.addEventListener('wheel', wheel, { passive: false });
-		return () => { target?.removeEventListener('wheel', wheel); themeObserver.disconnect(); };
+		return () => { clearTimeout(initializeHistory); historyReady = false; reader.onChange = null; mounted = false; target?.removeEventListener('wheel', wheel); themeObserver.disconnect(); };
 	});
+	$effect(() => {
+		const ready = historyReady;
+		const snapshot = parseMapVisit(page.state.mapVisit);
+		const historyReader = page.state.mapVisit?.reader ?? null;
+		if (!ready || !snapshot) return;
+		untrack(() => {
+			if (selected === snapshot.selected && reader.current === historyReader &&
+				camera.x === snapshot.camera.x && camera.y === snapshot.camera.y && camera.k === snapshot.camera.k &&
+				trail.join('\n') === snapshot.trail.join('\n')) return;
+			trail = snapshot.trail; activeRegion = snapshot.region; activeNeighborhood = snapshot.neighborhood;
+			if (snapshot.selected) select({ title: snapshot.selected, description: null, thumbnail: null }, true);
+			else { selected = null; selectionVersion++; }
+			camera = snapshot.camera;
+			reader.restore(historyReader);
+		});
+	});
+
 	$effect(() => {
 		const resized = { width, height };
 		if (width <= 0 || height <= 0) return;
+		if (restoredCamera) { restoredCamera = false; return; }
 		// Only viewport changes reframe; arriving metadata and camera gestures never do.
 		untrack(() => move(showingOverview || !focus ? overviewCamera(resized) : centeredCamera(focus, resized, camera.k), false));
+	});
+	$effect(() => {
+		const saved = { selected, trail, camera, region: activeRegion, neighborhood: activeNeighborhood };
+		if (width <= 0) return;
+		const timer = setTimeout(() => {
+			if (historyReady) replaceMapHistory();
+			try { localStorage.setItem('tangent-map-visit', JSON.stringify(saved)); } catch { /* Exploration works without storage. */ }
+		}, 400);
+		return () => clearTimeout(timer);
 	});
 	onDestroy(() => {
 		disposed = true;
@@ -393,7 +495,7 @@
 		cancelAnimationFrame(drawFrame);
 		clearTimeout(hoverTimer);
 		clearTimeout(idleTimer);
-		reader.close();
+		reader.restore(null);
 	});
 </script>
 
@@ -411,6 +513,7 @@
 	{#each regionLabels as { region, point }}
 		<button type="button" class="region-name map-overlay" style="left:{point.x}px;top:{point.y - 35}px" onclick={() => showRegion(region.id)} aria-label={`Explore ${region.label}`}>{region.label}</button>
 	{/each}
+	{#each neighborhoodLabels as { item, point }}<button type="button" class="region-name neighborhood-name map-overlay" style="left:{point.x}px;top:{point.y - 35}px" onclick={() => showNeighborhood(item)}>{item.label}</button>{/each}
 	{#each visible as item (item.node.title)}
 		{@const node = item.node}
 		{#if labels.has(node.title) || node.hub || node.title === selected}
@@ -456,6 +559,19 @@
 		{/if}
 		<p class="sr-only" role="status">{searching ? 'Searching Wikipedia' : searchError ? 'Search unavailable' : `${currentResults.length} results`}</p>
 	</div>
+	<div class="map-overlay discovery">
+		<nav aria-label="Map location"><button type="button" onclick={overview}>Wikipedia</button>{#if currentRegion}<span>/</span><button type="button" onclick={() => showRegion(currentRegion!.id)}>{currentRegion.label}</button>{/if}{#if currentNeighborhood}<span>/</span><span>{currentNeighborhood.label}</span>{/if}</nav>
+		<button type="button" class="browse-toggle" aria-expanded={discoveryOpen} onclick={() => discoveryOpen = !discoveryOpen}>Browse {activeRegion ? 'neighborhoods' : 'topics & routes'}</button>
+		{#if discoveryOpen}
+		<div class="discovery-menu">
+			{#if !activeRegion}<div class="topic-options">{#each REGIONS as region}<button type="button" onclick={() => showRegion(region.id)}>{region.label}</button>{/each}</div>{/if}
+			{#if activeRegion}<h2>{currentRegion?.label}</h2><div class="topic-options">{#each neighborhoods as item}<button type="button" onclick={() => showNeighborhood(item)}>{item.label}</button>{/each}</div><p>Start at a landmark, then follow its connections.</p>{/if}
+			<h2>Take a route</h2>{#each DISCOVERY_ROUTES as route}<button type="button" class="route-option" onclick={() => startRoute(route.id)}>{route.label}<span>{route.stops.length} stops</span></button>{/each}
+			<p>Curated reading stops, not direct Wikipedia links.</p>
+		</div>
+		{/if}
+	</div>
+	{#if activeRoute && !reader.isOpen}<div class="map-overlay route-progress"><span>{activeRoute.label}</span><button type="button" onclick={() => routeId = null} aria-label="Leave curated route"><X size={16} /></button><div>{#each activeRoute.stops as title, index}<button type="button" class:current={selected === title} onclick={() => dive(title)} aria-label={`Route stop ${index + 1}: ${title}`}>{index + 1}</button>{/each}</div>{#if routeIndex >= 0 && routeIndex < activeRoute.stops.length - 1}<button type="button" class="route-next" onclick={() => dive(activeRoute!.stops[routeIndex + 1])}>Next: {activeRoute.stops[routeIndex + 1]} <ArrowRight size={14} /></button>{/if}</div>{/if}
 	<div class="map-overlay controls">
 		<button type="button" onclick={overview} title="Show topic regions"><Scan size={18} aria-hidden="true" /><span>Overview</span></button>
 		<button type="button" onclick={() => { if (focus) center(focus); else overview(); }} aria-label="Recenter selected article" title="Recenter"><RotateCw size={18} /></button>
@@ -465,24 +581,27 @@
 	{#if !focus}
 		<div class="map-overlay orientation"><h1>Explore Wikipedia</h1><p>{atlasLoading ? 'Opening the map…' : `${(atlasArticles.size || nodes.length).toLocaleString()} articles to explore. Search all Wikipedia.`}</p><p class="gesture-help">Choose a region. Drag to pan. Pinch or Ctrl + scroll to zoom.</p></div>
 	{/if}
-	{#if hoveredNode && !reader.isOpen}<div class="map-overlay point-preview" aria-hidden="true"><strong>{hoveredNode.title}</strong><span>{hoveredNode.description ?? 'Wikipedia article'}</span></div>{/if}
+	{#if hoveredNode && !reader.isOpen && !activeRoute}<div class="map-overlay point-preview" aria-hidden="true"><strong>{hoveredNode.title}</strong><span>{hoveredNode.description ?? 'Wikipedia article'}</span></div>{/if}
 	{#if focus && !reader.isOpen}
 		{#key focus.title}
-		<aside class="map-overlay detail" aria-label="Selected article">
+		<aside class="map-overlay detail" class:connections-open={connectionsOpen} aria-label="Selected article">
 			<button type="button" class="detail-close" onclick={closeSelection} aria-label="Close selected article"><X size={18} /></button>
 			<p class="detail-region">Wikipedia article</p>
 			<h1>{focus.title}</h1>
+			<button type="button" class="connections-toggle" aria-expanded={connectionsOpen} aria-controls="map-next-connections" onclick={() => connectionsOpen = !connectionsOpen}>{connectionsOpen ? 'Hide connections' : `Connections (${connections.length})`}</button>
 			{#if article?.extract}<p class="summary">{article.extract}</p>
 			{:else if focus.description}<p class="summary">{focus.description}</p>
 			{:else if summaryError}<p class="summary">Summary unavailable. You can still open the article.</p>
 			{:else}<p class="summary">Loading summary…</p>{/if}
 			<div class="detail-actions"><button type="button" onclick={() => reader.open(article?.title ?? focus!.title)}>Read article <ArrowRight size={16} /></button>
 				<a href={`/?seed=${encodeURIComponent(article?.title ?? focus.title)}`}>Start tangent here</a></div>
-			<h2>Connections</h2>
+			<div id="map-next-connections" class="next-connections"><h2>Where next?</h2>
 			{#if loading}<p class="local-status" role="status">Finding connections…</p>{/if}
 			{#if error}<p class="local-status" role="alert">{error}</p><button class="retry" type="button" onclick={() => { if (selected) void loadSelection(selected, ++selectionVersion); }}>Retry connections</button>{/if}
-			{#if connections.length}<div class="connection-list">{#each connections.slice(0, 20) as node (node.title)}<button type="button" onclick={() => select(node)} onpointerenter={() => hover(node.title)} onpointerleave={() => clearTimeout(hoverTimer)}>{node.title}<ArrowRight size={14} /></button>{/each}</div>{/if}
-			<p class="map-note">Solid lines show discovered connections. Dotted lines trace your visits. Topic regions are starting points.</p>
+			{#if connections.length}<div class="connection-list">{#each connections.slice(0, 3) as node (node.title)}<button type="button" onclick={() => select(node)} onpointerenter={() => hover(node.title)} onpointerleave={() => clearTimeout(hoverTimer)}><span><strong>{node.title}</strong>{#if node.description}<small>{node.description}</small>{/if}</span><ArrowRight size={14} /></button>{/each}</div>{/if}
+			{#if connections.length > 3}<details class="more-connections"><summary>More connections ({connections.length - 3})</summary><div class="connection-list">{#each connections.slice(3) as node (node.title)}<button type="button" onclick={() => select(node)}><span><strong>{node.title}</strong>{#if node.description}<small>{node.description}</small>{/if}</span><ArrowRight size={14} /></button>{/each}</div></details>{/if}
+			</div>
+			<p class="map-note">Solid lines are Wikipedia links in either direction. Dotted lines trace your visits. This atlas is a sample; search reaches beyond it.</p>
 		</aside>
 		{/key}
 	{/if}
@@ -492,6 +611,26 @@
 </div>
 
 <style>
+	.discovery { top: 76px; left: 16px; max-width: min(360px, calc(100% - 32px)); }
+	.discovery nav { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; background: var(--color-void); color: var(--color-muted); }
+	.discovery nav button { min-height: 32px; color: var(--color-spark); }
+	.browse-toggle { min-height: 44px; padding: 8px 12px; border: 1px solid var(--color-hair); border-radius: 9px; background: var(--color-surface); font-size: 13px; }
+	.discovery-menu { margin-top: 6px; max-height: 48dvh; overflow-y: auto; padding: 14px; border: 1px solid var(--color-hair); border-radius: 12px; background: var(--color-surface); box-shadow: var(--shadow-card); }
+	.discovery-menu h2 { margin-top: 10px; font-size: 13px; font-weight: 600; }
+	.discovery-menu p { margin-top: 8px; font-size: 11px; color: var(--color-faint); }
+	.topic-options { display: flex; flex-wrap: wrap; gap: 5px; }
+	.topic-options button { min-height: 44px; padding: 7px 10px; background: var(--color-surface-2); border-radius: 8px; font-size: 13px; }
+	.route-option { display: flex; justify-content: space-between; width: 100%; min-height: 44px; gap: 8px; align-items: center; font-size: 13px; text-align: left; }
+	.route-option span { color: var(--color-faint); font-size: 11px; }
+	.route-progress { bottom: 82px; left: 16px; max-width: min(340px, calc(100% - 32px)); padding: 8px 12px; background: var(--color-surface); border: 1px solid var(--color-hair); border-radius: 12px; font-size: 12px; }
+	.route-progress > button { float: right; min-height: 32px; min-width: 32px; }
+	.route-progress div { display: flex; gap: 3px; }
+	.route-progress div button { width: 44px; height: 44px; color: var(--color-muted); }
+	.route-progress button.current { color: var(--color-accent); text-decoration: underline; }
+	.route-progress > button.route-next { float: none; display: flex; align-items: center; gap: 6px; min-height: 44px; color: var(--color-spark); }
+	.more-connections summary { min-height: 44px; padding-top: 14px; cursor: pointer; font-size: 12px; color: var(--color-spark); }
+	.connection-list strong { font-weight: 500; color: var(--color-ink); }
+	.connection-list small { display: block; margin-top: 2px; font-size: 11px; line-height: 1.4; }
 	/* Clipping must not create a scroll container: focusing a reader link or disclosure
 	   otherwise scrolls outlying map labels and pulls the reader beneath the app header. */
 	.universe { position: relative; width: 100%; height: calc(100dvh - var(--app-header-height, 69px)); overflow: clip; background: var(--color-void); touch-action: none; isolation: isolate; outline-offset: -3px; }
@@ -510,6 +649,7 @@
 	.world-node:hover .orb, .world-node:focus-visible .orb { transform: scale(1.25); background: var(--color-accent); }
 	.node-label { position: absolute; top: 40px; left: 50%; transform: translateX(-50%); max-width: 170px; width: max-content; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 2px 6px; border-radius: 4px; font-size: 12px; line-height: 20px; background: color-mix(in srgb, var(--color-void) 88%, transparent); pointer-events: none; }
 	.region-name { position: absolute; transform: translate(-50%, -100%); font-family: var(--font-display); font-size: 17px; color: var(--color-spark); min-height: 44px; padding: 8px; border-radius: 8px; background: color-mix(in srgb, var(--color-void) 65%, transparent); }
+	.neighborhood-name { font-size: 14px; }
 	.region-name:hover { color: var(--color-accent); background: var(--color-surface); }
 	.map-overlay { position: absolute; z-index: 8; touch-action: auto; }
 	.search-panel { top: 16px; left: 16px; width: min(360px, calc(100% - 32px)); }
@@ -533,6 +673,7 @@
 	.point-preview strong { font-size: 13px; font-weight: 500; }
 	.point-preview span { color: var(--color-muted); font-size: 11px; }
 	.detail { top: 16px; right: 16px; width: 310px; max-height: calc(100% - 100px); overflow-y: auto; border: 1px solid var(--color-hair); border-radius: 16px; background: var(--color-surface); box-shadow: var(--shadow-card); padding: 20px; }
+	.connections-toggle { display: none; }
 	.detail-close { position: absolute; right: 5px; top: 5px; display: grid; place-items: center; width: 40px; height: 40px; }
 	.detail-region { font-size: 11px; color: var(--color-faint); padding-right: 25px; }
 	.detail h1 { font-family: var(--font-display); font-size: 25px; line-height: 1.15; margin-top: 6px; padding-right: 10px; overflow-wrap: anywhere; }
@@ -554,12 +695,20 @@
 	.attribution { bottom: 1px; right: 12px; font-size: 10px; color: var(--color-faint); }
 	.attribution a:hover { color: var(--color-ink); }
 	@media (max-width: 760px) {
-		.detail { top: auto; bottom: 78px; left: 12px; right: 12px; width: auto; max-height: 36%; padding: 16px; }
+		.route-progress { bottom: 70px; }
+		.universe:has(.route-progress) .detail { bottom: 204px; max-height: 40%; }
+		.universe:has(.route-progress) .detail.connections-open { max-height: min(52%, calc(100% - 320px)); }
+		.detail { top: auto; bottom: 78px; left: 12px; right: 12px; width: auto; max-height: 44%; padding: 16px; }
 		.detail h1 { font-size: 22px; }
+		.connections-toggle { display: inline-flex; align-items: center; min-height: 44px; font-size: 12px; color: var(--color-spark); }
+		.next-connections { display: none; }
+		.connections-open .next-connections { display: block; }
+		.detail.connections-open { max-height: 65%; }
+		.connections-open .summary, .connections-open .map-note { display: none; }
 		.summary { margin-top: 9px; -webkit-line-clamp: 3; line-clamp: 3; }
 		.trail { display: none; }
 		.graph-reader { width: 100%; }
-		.orientation { left: 16px; right: auto; top: 84px; max-width: 220px; padding: 10px 12px; }
+		.orientation { left: 16px; right: auto; top: 174px; max-width: 220px; padding: 10px 12px; }
 		.orientation .gesture-help { display: none; }
 	}
 	/* The shared reader takes over below its desktop breakpoint. Lift its containing
