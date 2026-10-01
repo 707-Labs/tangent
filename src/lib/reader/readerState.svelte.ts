@@ -16,6 +16,10 @@
 class ReaderState {
 	/** The title of the article currently shown, or null when the reader is closed. */
 	current = $state<string | null>(null);
+	onChange: ((title: string | null) => void) | null = null;
+
+	/** History restoration must not create another history entry. */
+	restore(title: string | null): void { this.current = title; }
 
 	get isOpen(): boolean {
 		return this.current !== null;
@@ -24,10 +28,12 @@ class ReaderState {
 	/** Open the reader on `title`, replacing any article already shown. */
 	open(title: string): void {
 		this.current = title;
+		this.onChange?.(title);
 	}
 
 	close(): void {
 		this.current = null;
+		this.onChange?.(null);
 	}
 }
 

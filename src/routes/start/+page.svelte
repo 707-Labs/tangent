@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
+	import { loadRecent, type RecentTangent } from '$lib/feed/continuity';
+	let recent = $state<RecentTangent[]>([]);
 	import type { SearchResult } from '$lib/wikipedia/types';
 	import type { PageProps } from './$types';
 	import { randomSeed, SEED_CATEGORIES } from '$lib/seeds';
@@ -31,6 +33,7 @@
 	// Daily picks enrich the surprise pool when ready. Starting a tangent never
 	// waits on that optional upstream request.
 	onMount(() => {
+		recent = loadRecent();
 		void data.today
 			.then((today) => {
 				todayTitles = today.sections.flatMap((section) => section.picks.map((pick) => pick.title));
@@ -149,6 +152,16 @@
 		Pick a topic and see where it takes you.
 	</p>
 
+	{#if recent.length}
+		<section class="mt-6 w-full max-w-md text-left" aria-label="Recent tangents">
+			<h2 class="text-sm text-muted">Continue a tangent</h2>
+			{#each recent.slice(0, 3) as tangent}
+				<a class="mt-2 flex min-h-11 items-center justify-between gap-3 rounded-card border border-hair px-4 py-3 text-sm text-ink hover:bg-surface" href={`/?seed=${encodeURIComponent(tangent.seedTitle)}&resume=1&card=${encodeURIComponent(tangent.trail.filter((node) => node.seen).at(-1)?.id ?? '')}`}>
+					<span class="truncate">{tangent.seedTitle}</span><span class="text-muted">Resume</span>
+				</a>
+			{/each}
+		</section>
+	{/if}
 	<form onsubmit={onSubmit} class="relative mt-8 w-full max-w-md">
 		<Search
 			class="pointer-events-none absolute top-4 left-4 size-5 text-faint"

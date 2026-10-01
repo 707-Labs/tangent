@@ -29,16 +29,16 @@
 		<ul class="space-y-1.5 text-muted">
 			<li class="flex items-start gap-2">
 				<BookOpen class="mt-0.5 size-4 shrink-0 text-faint" aria-hidden="true" />
-				<span><span class="font-medium text-ink">Read article</span> opens the full article.</span>
+				<span><span class="font-medium text-ink">Read</span> opens the full article.</span>
 			</li>
 			<li class="flex items-start gap-2">
 				<Star class="mt-0.5 size-4 shrink-0 text-faint" aria-hidden="true" />
-				<span><span class="font-medium text-ink">Remember interest</span> tunes future suggestions.</span>
+				<span>Star an article to save it.</span>
 			</li>
 			<li class="flex items-start gap-2">
 				<ArrowRight class="mt-0.5 size-4 shrink-0 text-faint" aria-hidden="true" />
 				<span
-					><span class="font-medium text-ink">Follow related</span> adds a new topic to this tangent.</span
+					><span class="font-medium text-ink">Explore</span> lets you choose the next topic.</span
 				>
 			</li>
 		</ul>

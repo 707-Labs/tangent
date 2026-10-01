@@ -1,3 +1,4 @@
+import { validTrail, rememberTangent } from './continuity';
 import { FEED } from './config';
 import type { TrailNode } from './types';
 
@@ -18,15 +19,16 @@ interface StoredTrail {
 export function saveTrail(
 	seedTitle: string,
 	nodes: TrailNode[],
-	storage: Storage = sessionStorage
+	storage?: Storage
 ): void {
 	const capped = nodes.length > FEED.trailCap ? nodes.slice(-FEED.trailCap) : nodes;
 	try {
 		const payload: StoredTrail = { seedTitle, trail: capped };
-		storage.setItem(FEED.trailStorageKey, JSON.stringify(payload));
+		(storage ?? sessionStorage).setItem(FEED.trailStorageKey, JSON.stringify(payload));
 	} catch {
 		// Storage full or unavailable — trail is best-effort.
 	}
+	rememberTangent(seedTitle, capped);
 }
 
 /**
@@ -34,13 +36,14 @@ export function saveTrail(
  *
  * Callers must guard with `if (!browser)` before calling in SSR contexts.
  */
-export function loadTrail(storage: Storage = sessionStorage): StoredTrail | null {
+export function loadTrail(storage?: Storage): StoredTrail | null {
 	try {
-		const raw = storage.getItem(FEED.trailStorageKey);
+		const raw = (storage ?? sessionStorage).getItem(FEED.trailStorageKey);
 		if (!raw) return null;
 		const parsed = JSON.parse(raw) as Partial<StoredTrail>;
-		if (!parsed.seedTitle || !Array.isArray(parsed.trail)) return null;
-		return { seedTitle: parsed.seedTitle, trail: parsed.trail };
+		const trail = validTrail(parsed.trail);
+		if (typeof parsed.seedTitle !== 'string' || !parsed.seedTitle || parsed.seedTitle.length > 500 || !trail) return null;
+		return { seedTitle: parsed.seedTitle, trail };
 	} catch {
 		return null;
 	}
@@ -51,9 +54,9 @@ export function loadTrail(storage: Storage = sessionStorage): StoredTrail | null
  *
  * Callers must guard with `if (!browser)` before calling in SSR contexts.
  */
-export function clearTrail(storage: Storage = sessionStorage): void {
+export function clearTrail(storage?: Storage): void {
 	try {
-		storage.removeItem(FEED.trailStorageKey);
+		(storage ?? sessionStorage).removeItem(FEED.trailStorageKey);
 	} catch {
 		// Ignore.
 	}

@@ -118,7 +118,7 @@ Adding a theme = one entry in `themes.ts` + one `:root[data-theme='…']` block 
 Layout defined in `src/routes/+layout.svelte`.
 
 **Navigation pattern:** sticky **top bar** (full-bleed border, inner row constrained to the
-reading column). Header holds the BrandMark (home), a Trail toggle (appears once you're past the
+reading column). Header holds the BrandMark (home), Saved, a Trail toggle (appears once you're past the
 seed), a visible Sign in/Account action, Settings, and a "New tangent" CTA. The graph shortcut
 appears on wider screens and remains available in Settings on phones. A footer carries Wikipedia
 attribution (CC BY-SA 4.0) + About / Terms / Source links.
@@ -131,8 +131,8 @@ morphs the shell into a two-pane split (`lg:max-w-7xl`) via a one-shot `transiti
 
 | Route | Description |
 |---|---|
-| `/` | The infinite feed: read connected article previews, follow a related topic, or remember an interest for future suggestions; open the reader pane and your trail. |
-| `/start` | New tangent: search Wikipedia or pick from "Today on Wikipedia" (featured / DYK / on this day / news / trending) to seed a fresh feed. |
+| `/` | The infinite feed: read connected previews, choose an Explore destination, save articles, or give explicit feedback; open the reader and trail. Browser history preserves article and feed position. |
+| `/start` | New tangent: search Wikipedia or pick from "Today on Wikipedia" (featured / DYK / on this day / news / trending) to seed a fresh feed. Recent tangents have explicit Resume links. |
 | `/graph` | A full-window article atlas with seven topic regions. A static snapshot supplies real articles, previews, connections and fixed positions. The overview draws the whole collection; zoom reveals more names. Selecting a bundled article shows its preview and known links immediately. Search also imports articles beyond the atlas. Screen-space label collision checks and focused connections keep exploration readable; dotted paths show visits. Drag, scroll, pinch, keyboard and zoom controls navigate the canvas. Read in place or start a feed from the selection. Without `?seed=`, it resumes the feed's chain tip when available. |
 | `/about` | Static page — what Tangent is, where content comes from, licensing and privacy. |
 | `/terms` | Terms of Use + Privacy in one plain-language page. |
@@ -143,23 +143,37 @@ picks. Search dismisses on Escape or blur and selects only results matching the
 current query. Daily picks enrich surprise only once available.
 
 Feed cards center images between the heading and a five-line preview, preserve their
-aspect ratio, and omit repeat Wikimedia files within a tangent. Read article and
-Follow related carry different visual weight; Remember interest stays separate.
+aspect ratio, and omit repeat Wikimedia files within a tangent. A single compact
+action row gives Read primary weight, Explore a quieter text treatment, and an
+saved-article star at the end. Explore opens up to three named destinations with
+descriptions and supported relationship labels. Saved articles are retrievable
+from the header; reading and exploring still inform suggestions. Less of this
+and Undo feedback live in the card overflow. Explanations appear on hover or keyboard focus, with
+descriptive accessible names and 44 px touch targets.
+
+Reader Contents jumps to real headings; citation previews keep source access near
+the passage. Reading positions restore with open Sources and Quick facts. Feed
+history stores a visible waypoint and offset to survive the reader's width change.
+Saved articles, recent tangents, map visits, and reading positions are device-local.
 
 The map uses the whole viewport below the app header. Desktop selections sit beside
 the canvas; phones use a bottom panel. Every point represents a real article in the
 loaded collection. Local search reaches bundled articles immediately, and Wikipedia
 search extends the map beyond that sample. More labels appear with closer zoom;
-connections stay focused on the selection. The reader replaces the map controls
+connections stay focused on the selection. Named neighborhood landmarks appear at
+intermediate zoom, and Browse offers three editorial routes with numbered stops.
+These signposts retain the atlas's fixed coordinates; they are not new computed
+clusters. Three ranked connections lead each selection, with more in a disclosure.
+The reader replaces the map controls
 while open on a phone and stays within the viewport at every scroll position.
 
 ---
 
 ## Components
 
-**13 components**, all in `src/lib/components/` (flat, no domain subdirs). Grouped by role:
+Components live in `src/lib/components/` (flat, no domain subdirs). Grouped by role:
 
-- **Feed & reading** — `ArticleCard` (centered media, a five-line preview, Read article / Follow related actions, and a separate Remember interest toggle; joins the trail on first view), `ArticleReader` (full article, compact Quick facts, and direct access to Sources; desktop pane follows measured header height), `SkeletonCard` (feed-card loading placeholder), `ActionHint` (one-time explanation of reading, following, and personalization), `LinkPreview` (hover peek of an in-article link — pointer-fine only, inert on touch).
+- **Feed & reading** — `ArticleCard` (centered media, a five-line preview, compact Read / Explore actions and a save star; joins the trail on first view), `ExplorePanel` (three named destinations), `SavedPanel` (retrievable saved articles), `ArticleReader` (full article, Contents, Quick facts, citation previews and Sources; desktop pane follows measured header height), `SkeletonCard` (feed-card loading placeholder), `ActionHint` (one-time explanation of reading, exploring, and saving), `LinkPreview` (hover peek of an in-article link — pointer-fine only, inert on touch).
 - **Trail & connections** — `TrailPanel` (the trail of articles you've actually reached; jump back to waypoints), `ConnectionBreadcrumb` ("came from" link back to a card's source), `RelationIcon` (geometric icon for a connection's relation type — the shared node/edge/point vocabulary).
 - **Brand & chrome** — `BrandMark` (wordmark + tangent-line logo with the lone ember dot at the touch-point), `Drawer` (accessible native `<dialog>` slide-in panel primitive; focus-restoring close).
 - **Settings & account** — `ProfilePanel` (Settings drawer: compact account shortcut, appearance, feed flavor, learned interests), `AccountPanel` (dedicated sign-in/account drawer), `AccountSection` (shared account forms), `ThemePicker` (four compact appearance choices).

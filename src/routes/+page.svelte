@@ -1,12 +1,14 @@
 <script lang="ts">
 	import { uniqueImageCardIds } from '$lib/feed/images';
-	import { tick } from 'svelte';
+	import { tick, onMount, untrack } from 'svelte';
+	import { afterNavigate, beforeNavigate, pushState, replaceState } from '$app/navigation';
+	import { loadRecent, recentForLocation, locationFromUrl, locationUrl, validateLocation, type TangentLocation } from '$lib/feed/continuity';
 	import { browser } from '$app/environment';
 	import { page } from '$app/state';
 	import { feed } from '$lib/feed/feedState.svelte';
 	import { reader } from '$lib/reader/readerState.svelte';
 	import { trailPanel } from '$lib/feed/trailPanel.svelte';
-	import { loadTrail } from '$lib/feed/trail';
+	import { loadTrail, saveTrail } from '$lib/feed/trail';
 	import type { FeedCard } from '$lib/feed/types';
 	import { randomSeed } from '$lib/seeds';
 	import ArticleCard from '$lib/components/ArticleCard.svelte';
@@ -17,7 +19,11 @@
 	import SkeletonCard from '$lib/components/SkeletonCard.svelte';
 	import ActionHint from '$lib/components/ActionHint.svelte';
 
-	const seedParam = $derived(page.url.searchParams.get('seed'));
+	// Shallow history retains Kit's loaded page URL, which can differ from the
+	// address bar on a cross-route Back. The address bar identifies this tangent.
+	let browserSeed = $state<string | null | undefined>(browser ? new URL(window.location.href).searchParams.get('seed') : undefined);
+	const seedParam = $derived(browserSeed === undefined ? page.url.searchParams.get('seed') : browserSeed);
+	afterNavigate(() => { browserSeed = new URL(window.location.href).searchParams.get('seed'); });
 	let exhaustedImageCards = $state<Set<string>>(new Set());
 
 	// Rehydrate an existing session or start fresh. Runs on mount and whenever
@@ -29,12 +35,19 @@
 		exhaustedImageCards = new Set();
 		// A new seed means a new feed — don't leave a stale article open beside it
 		// (the reader is a singleton and would otherwise orphan onto the new/errored page).
-		reader.close();
+		reader.restore(null);
 		let cancelled = false;
-		(async () => {
+		untrack(() => void (async () => {
+			const activeUrl = browser ? new URL(window.location.href) : page.url;
+			if (browser && seed) {
+				const waypoint = (validateLocation(page.state.tangent) ?? locationFromUrl(activeUrl)).card;
+				const recent = recentForLocation(loadRecent(), seed, waypoint, activeUrl.searchParams.get('resume') === '1');
+				if (recent) saveTrail(recent.seedTitle, recent.trail);
+			}
 			const stored = browser ? loadTrail() : null;
 			const seedMatches = stored && (seed === null || seed === stored.seedTitle);
 
+			if (seedMatches && feed.seedTitle === stored.seedTitle && feed.cards.length > 0 && activeUrl.searchParams.get('resume') !== '1') return;
 			if (seedMatches) {
 				const ok = await feed.rehydrate(seed);
 				if (cancelled) return;
@@ -49,10 +62,96 @@
 					feed.start(randomSeed().title);
 				}
 			}
-		})();
+		})());
 		return () => {
 			cancelled = true;
 		};
+	});
+
+	let historyReady = $state(false);
+	let navigationError = $state<string | null>(null);
+	let restoreToken = 0;
+	let appliedLocation: TangentLocation | null = null;
+	/** Preserve the visible waypoint through the reader's column-width change. */
+	function captureFeedPosition(): Pick<TangentLocation, 'card' | 'offset' | 'scrollY'> {
+		const headerBottom = document.querySelector('header')?.getBoundingClientRect().bottom ?? 80;
+		const anchor = [...document.querySelectorAll<HTMLElement>('[data-card]')]
+			.find((node) => node.getBoundingClientRect().bottom > headerBottom);
+		return { card: anchor?.dataset.card ?? null, offset: anchor ? -anchor.getBoundingClientRect().top : undefined, scrollY: window.scrollY };
+	}
+	beforeNavigate((navigation) => {
+		// Popstate has already moved the browser's active entry to the destination.
+		// Capturing here would overwrite the waypoint we're trying to restore.
+		if (!historyReady || navigation.type === 'popstate') return;
+		const snapshot: TangentLocation = { reader: reader.current, ...captureFeedPosition() };
+		// This is bookkeeping for the departing entry, not a new UI navigation.
+		appliedLocation = snapshot;
+		replaceState('', { ...page.state, tangent: snapshot });
+	});
+
+	function navigate(next: TangentLocation) {
+		if (!historyReady) return;
+		const previous = page.state.tangent ?? locationFromUrl(new URL(window.location.href));
+		replaceState('', { ...page.state, tangent: { ...previous, ...captureFeedPosition() } });
+		// Explicit card jumps intentionally omit offset; reader transitions keep it.
+		pushState(locationUrl(new URL(window.location.href), next), { ...page.state, tangent: next });
+	}
+	function navigateCard(id: string) { navigate({ reader: null, card: id, scrollY: 0 }); }
+	onMount(() => {
+		const historyLocation = validateLocation(page.state.tangent);
+		let initial = historyLocation ?? locationFromUrl(new URL(window.location.href));
+		try {
+			const stored = JSON.parse(sessionStorage.getItem('tangent-location') ?? 'null');
+			if (!historyLocation && !initial.card && stored?.seed === seedParam && Number.isFinite(stored.scrollY)) {
+				initial.scrollY = Math.max(0, stored.scrollY);
+				if (typeof stored.card === 'string' && stored.card.length <= 200 && Number.isFinite(stored.offset)) { initial.card = stored.card; initial.offset = stored.offset; }
+			}
+		} catch { /* Best effort. */ }
+		// Kit sets its started flag after the initial mount microtask. Defer shallow
+		// routing until that initialization completes; onMount alone is too early.
+		const initializeHistory = setTimeout(() => {
+			replaceState('', { ...page.state, tangent: validateLocation(page.state.tangent) ?? initial });
+			historyReady = true;
+		}, 0);
+		reader.onChange = (title) => {
+			const previous = page.state.tangent ?? locationFromUrl(new URL(window.location.href));
+			if (previous.reader === title) return;
+			navigate({ ...previous, ...captureFeedPosition(), reader: title });
+		};
+		const persist = () => {
+			try {
+				sessionStorage.setItem('tangent-location', JSON.stringify({ seed: feed.seedTitle, ...captureFeedPosition() }));
+			} catch { /* Best effort. */ }
+		};
+		window.addEventListener('pagehide', persist);
+		return () => { clearTimeout(initializeHistory); persist(); window.removeEventListener('pagehide', persist); reader.onChange = null; };
+	});
+	$effect(() => {
+		const state = page.state.tangent;
+		const routeUrl = new URL(window.location.href);
+		const ready = historyReady && !feed.rehydrating && (feed.status === 'ready' || feed.status === 'exhausted' || feed.status === 'stalled');
+		if (!ready) return;
+		if (!state) {
+			replaceState('', { ...page.state, tangent: locationFromUrl(routeUrl) });
+			return;
+		}
+		if (state === appliedLocation) return;
+		const previousReader = appliedLocation?.reader ?? null;
+		appliedLocation = state;
+		const token = ++restoreToken;
+		untrack(() => void (async () => {
+			const layoutChanges = (previousReader !== null) !== (state.reader !== null);
+			reader.restore(state.reader);
+			if (state.card) await feed.ensureCard(state.card);
+			await tick();
+			await waitForReaderCollapse(layoutChanges);
+			await tick();
+			if (token !== restoreToken) return;
+			const anchor = state.card ? document.querySelector<HTMLElement>(`[data-card="${CSS.escape(state.card)}"]`) : null;
+			if (anchor && state.offset !== undefined) window.scrollTo({ top: window.scrollY + anchor.getBoundingClientRect().top + state.offset, behavior: 'instant' });
+			else if (state.scrollY > 0 || !state.card) window.scrollTo({ top: state.scrollY, behavior: 'instant' });
+			else document.querySelector(`[data-card="${CSS.escape(state.card)}"]`)?.scrollIntoView({ block: 'start', behavior: 'instant' });
+		})());
 	});
 
 	let sentinel = $state<HTMLElement | null>(null);
@@ -148,7 +247,7 @@
 		// (it would otherwise stay open over the destination) and let the layout settle
 		// back to one column before scrolling.
 		const wasReaderOpen = reader.isOpen;
-		reader.close();
+		reader.restore(null);
 		await tick();
 		await waitForReaderCollapse(wasReaderOpen);
 		await tick();
@@ -160,11 +259,11 @@
 		landedTimer = setTimeout(() => (landedId = null), 1600);
 	}
 
-	async function handleBranch(card: FeedCard) {
-		const id = await feed.branchFrom(card);
+	async function handleBranch(card: FeedCard, title?: string) {
+		const id = title ? feed.beginDive(title, card.article.title) : await feed.branchFrom(card);
 		// The new card may be several screens away. Snap to it like an explicit
 		// dive so steering lands reliably rather than waiting on a long smooth scroll.
-		if (id) await goToCard(id, { instant: true });
+		if (id) { navigateCard(id); await goToCard(id, { instant: true }); }
 	}
 
 	function handleRead(card: FeedCard) {
@@ -182,6 +281,7 @@
 	// trail records that the thread was pulled.
 	async function handleFootPull(card: FeedCard, title: string) {
 		const id = feed.beginDive(title, card.article.title);
+		navigateCard(id);
 		await goToCard(id, { instant: true });
 	}
 
@@ -196,6 +296,7 @@
 		// reader collapses, and the article streams in beneath it instead of after a network
 		// pause. The skeleton is shorter than any real card, so the body only grows it down.
 		const id = feed.beginDive(title, fromTitle);
+		navigateCard(id);
 		await goToCard(id, { instant: true });
 	}
 
@@ -206,7 +307,7 @@
 		jumpingRelated = true;
 		try {
 			const id = await feed.jumpRelated();
-			if (id) await goToCard(id);
+			if (id) { navigateCard(id); await goToCard(id); }
 			else feed.showStartOver = true;
 		} finally {
 			jumpingRelated = false;
@@ -214,8 +315,10 @@
 	}
 
 	async function handleTrailSelect(id: string) {
+		navigationError = null;
 		trailPanel.close();
-		await goToCard(id);
+		if (await feed.ensureCard(id)) { navigateCard(id); await goToCard(id); }
+		else navigationError = 'This article could not be loaded. Please try again.';
 	}
 
 	// For each card, the id of the card it came from — the nearest earlier card whose
@@ -250,11 +353,12 @@
 {#if trailPanel.isOpen}
 	<TrailPanel
 		trail={feed.trail.filter((n) => n.seen)}
-		presentIds={new Set(feed.cards.map((c) => c.id))}
 		onClose={() => trailPanel.close()}
 		onSelect={handleTrailSelect}
 	/>
 {/if}
+
+{#if navigationError}<p role="alert" class="mb-4 text-sm text-danger">{navigationError}</p>{/if}
 
 <!-- Reading splits the page into two panes (lg+): feed on the left, article on the right. -->
 <div class={reader.isOpen ? 'lg:flex lg:items-start lg:gap-6' : ''}>
@@ -292,7 +396,7 @@
 					onImageExhausted={imageExhausted}
 					onBranch={handleBranch}
 					onRead={handleRead}
-					onNavigateToSource={sourceId ? () => goToCard(sourceId) : undefined}
+					onNavigateToSource={sourceId ? () => { navigateCard(sourceId); void goToCard(sourceId); } : undefined}
 					onSeen={() => feed.markSeen(card.id)}
 				/>
 			</div>

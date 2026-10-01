@@ -4,9 +4,10 @@
 
 The feed's old thumbnails left empty space between the heading and excerpt. Images
 now sit in a centered, bounded row with their original aspect ratio; previews stop
-after five lines so reading and steering remain reachable. Read article opens the
-full text. Follow related adds a connected topic. Remember interest changes future
-suggestions independently of navigation.
+after five lines so reading and steering remain reachable. A compact row offers
+Read for the full text, Explore for a choice of connected topics, and a star for
+saved articles. Each has a 44 px touch target; explanatory copy is available
+on hover or keyboard focus instead of filling every card.
 
 Repeated Wikimedia files appear once per tangent, using repository, file name, and
 page identity rather than thumbnail width. Article metadata remains intact. Unknown
@@ -51,7 +52,7 @@ names. Acquisition details and validation are in
   semantic embedding.
 - The client preserves the static corpus and retains up to 1,200 additional live
   nodes. Canvas draws the collection, while interactive overlays and labels remain
-  bounded. Up to 30 focused connections and 12 recent visits are drawn. The live
+  bounded. Up to eight focused connections and 12 recent visits are drawn. The live
   fallback retains 64 completed summaries and neighborhoods each; long exploration
   may discard older live non-hub nodes.
 - A shared FIFO queue permits four active graph requests; two speculative
@@ -62,6 +63,10 @@ names. Acquisition details and validation are in
   concern reuse, bounded work, and immediate local interaction.
 
 ## Validation
+
+The checks below describe the September 30 release. Subsequent history, saving,
+reader navigation, and map discovery decisions are documented in
+[context and discovery](2026-10-01-context-and-discovery.md).
 
 393 tests in 28 files pass; Svelte check reports zero errors/warnings and the
 Cloudflare production build succeeds. New regressions cover image identity and

@@ -5,6 +5,7 @@ import { tokenize } from '$lib/feed/tokens';
 import type { TasteId } from '$lib/feed/taste';
 import { normalizeTaste } from '$lib/feed/taste';
 import { applyDfDecay, applySessionDecay } from './decay';
+import { disinterest, undoDisinterest } from './feedback';
 import { type Persisted, EMPTY_PERSISTED, hydratePersisted } from './persisted';
 
 const STORAGE_KEY = 'tangent:profile:v1';
@@ -126,6 +127,20 @@ class EngagementProfile {
 		this.#skipped.add(article.title);
 		this.#bumpAvoidTokens(article, FEED.skipTokenWeight);
 		this.#save();
+	}
+
+	/** Explicit feedback is stronger than a quick scroll and works after a read too. */
+	recordLess(article: Article): () => void {
+		const result = disinterest(this.tokenAvoidWeights, tokenize(`${article.title} ${article.description ?? ''}`), FEED.skipTokenWeight * 3, FEED.avoidTokenWeightCap);
+		this.tokenAvoidWeights = result.weights;
+		this.#save();
+		let undone = false;
+		return () => {
+			if (undone) return;
+			undone = true;
+			this.tokenAvoidWeights = undoDisinterest(this.tokenAvoidWeights, result.delta);
+			this.#save();
+		};
 	}
 
 	setTaste(taste: TasteId): void {
