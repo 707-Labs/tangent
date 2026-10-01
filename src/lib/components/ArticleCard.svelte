@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { FeedCard } from '$lib/feed/types';
-	import { Star, Check, BookOpen, LoaderCircle, ArrowRight } from '@lucide/svelte';
+	import { Star, BookOpen, LoaderCircle, ArrowRight } from '@lucide/svelte';
 	import { FEED } from '$lib/feed/config';
 	import { DwellTracker } from '$lib/engagement/dwell';
 	import { profile } from '$lib/engagement/profile.svelte';
@@ -39,7 +39,11 @@
 	const pending = $derived(card.pending ?? false);
 
 	let branching = $state(false);
+	let tipsDismissed = $state(false);
 	let interacted = false;
+	function handleActionKey(event: KeyboardEvent) {
+		if (event.key === 'Escape') { tipsDismissed = true; event.stopPropagation(); }
+	}
 	// Larger Wikimedia thumbnails can fail for individual formats. Retry the source
 	// supplied by Wikipedia once, then omit a broken image without leaving a blank frame.
 	let failedSources = $state<string[]>([]);
@@ -87,7 +91,7 @@
 	function handleCardTap(event: MouseEvent) {
 		if (pending) return; // nothing to read yet
 		const el = event.target as HTMLElement | null;
-		if (el?.closest('button, a')) return;
+		if (el?.closest('button, a, [role="tooltip"]')) return;
 		if (window.getSelection()?.toString()) return;
 		read();
 	}
@@ -146,7 +150,7 @@
 	});
 </script>
 
-<!-- Tap-to-open is a convenience; the keyboard-accessible path is the "Read article" button. -->
+<!-- Tap-to-open is a convenience; the keyboard-accessible path is the Read button. -->
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div
 	bind:this={el}
@@ -190,43 +194,83 @@
 		{/if}
 
 		{#if !pending}
-		<div class="space-y-3 border-t border-hair pt-4">
-			<div class="grid grid-cols-2 gap-2">
-				<button type="button" onclick={read} aria-label={`Read article: ${article.title}`}
-					class="flex min-h-14 items-center justify-center gap-2 rounded-xl bg-read px-3 py-2.5 text-left text-sm
+		<div class="flex items-center gap-2 border-t border-hair pt-3" class:tips-dismissed={tipsDismissed}
+			role="group" aria-label="Article actions"
+			onfocusin={() => tipsDismissed = false} onpointerenter={() => tipsDismissed = false}>
+			<div class="card-action">
+				<button type="button" onclick={read} onkeydown={handleActionKey} aria-label={`Read article: ${article.title}`}
+					aria-describedby={`read-help-${card.id}`}
+					class="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-read px-4 py-2 text-sm
 						font-medium text-surface-2 transition-opacity hover:opacity-90">
-					<BookOpen class="hidden size-4 shrink-0 sm:block" aria-hidden="true" />
-					<span>Read article<span class="mt-0.5 block text-[11px] font-normal opacity-75">Full text</span></span>
+					<BookOpen class="size-4 shrink-0" aria-hidden="true" />
+					Read
 				</button>
-				<button type="button" onclick={branch} disabled={branching}
-					aria-label={`Follow related topic: ${article.title}`}
-					class="flex min-h-14 items-center justify-center gap-2 rounded-xl border border-hair-strong px-3 py-2.5
-						text-left text-sm font-medium text-ink transition-colors hover:bg-surface-2 disabled:opacity-50">
-					{#if branching}<LoaderCircle class="hidden size-4 shrink-0 animate-spin sm:block" aria-hidden="true" />
-					{:else}<ArrowRight class="hidden size-4 shrink-0 sm:block" aria-hidden="true" />{/if}
-					<span>{branching ? 'Following…' : 'Follow related'}<span class="mt-0.5 block text-[11px] font-normal text-muted">Adds a new topic</span></span>
-				</button>
+				<span class="card-action-tip" role="tooltip" id={`read-help-${card.id}`}>Open the full article.</span>
 			</div>
-			<div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-			<button
-				type="button"
-				onclick={toggleLike}
-				aria-pressed={liked}
-				aria-label={liked ? `Forget interest in ${article.title}` : `Remember interest in ${article.title}`}
-				title="Use this interest for future suggestions"
-				class="group -ml-2 inline-flex min-h-11 items-center gap-1.5 rounded-full px-2 py-1.5 text-sm
-					font-medium transition-colors
-					{liked
-					? 'text-like'
-					: 'text-muted hover:bg-surface-2 hover:text-ink'}"
-			>
-				{#if liked}<Check class="size-4" aria-hidden="true" />
-				{:else}<Star class="size-4" aria-hidden="true" />{/if}
-				{liked ? 'Interest remembered' : 'Remember interest'}
-			</button>
-				<p class="text-xs text-faint">Tunes future suggestions</p>
+			<div class="card-action">
+				<button type="button" onclick={branch} onkeydown={handleActionKey} disabled={branching}
+					aria-label={`Explore a related topic: ${article.title}`}
+					aria-describedby={`explore-help-${card.id}`} aria-busy={branching}
+					class="inline-flex min-h-11 items-center justify-center gap-2 rounded-full px-2 py-2
+						text-sm font-medium text-muted transition-colors hover:bg-surface-2 hover:text-ink disabled:opacity-50">
+					Explore
+					{#if branching}<LoaderCircle class="size-4 shrink-0 animate-spin" aria-hidden="true" />
+					{:else}<ArrowRight class="size-4 shrink-0" aria-hidden="true" />{/if}
+				</button>
+				<span class="card-action-tip" role="tooltip" id={`explore-help-${card.id}`}>Continue from this topic.</span>
+			</div>
+			<div class="card-action card-action-end ml-auto">
+				<button
+					type="button"
+					onclick={toggleLike}
+					onkeydown={handleActionKey}
+					aria-pressed={liked}
+					aria-label={liked ? `Forget interest in ${article.title}` : `Remember interest in ${article.title}`}
+					aria-describedby={`interest-help-${card.id}`}
+					class="inline-flex size-11 shrink-0 items-center justify-center rounded-full transition-colors
+						{liked ? 'text-like hover:bg-surface-2' : 'text-muted hover:bg-surface-2 hover:text-ink'}"
+				>
+					<Star class="size-[18px]" fill={liked ? 'currentColor' : 'none'} aria-hidden="true" />
+				</button>
+				<span class="card-action-tip" role="tooltip" id={`interest-help-${card.id}`}>
+					{liked ? 'Remove this interest.' : 'Use this topic for future suggestions.'}
+				</span>
 			</div>
 		</div>
 		{/if}
 	</div>
 </div>
+
+<style>
+	.card-action { position: relative; display: inline-flex; }
+	.card-action-tip {
+		position: absolute;
+		z-index: 1;
+		bottom: calc(100% + 0.375rem);
+		left: 0;
+		width: max-content;
+		max-width: min(15rem, calc(100vw - 3.5rem));
+		padding: 0.5rem 0.75rem;
+		border: 1px solid var(--color-hair-strong);
+		border-radius: 0.5rem;
+		background: var(--color-surface-2);
+		color: var(--color-ink);
+		font-size: 0.75rem;
+		line-height: 1.4;
+		visibility: hidden;
+	}
+	.card-action-end .card-action-tip { left: auto; right: 0; }
+	.card-action-tip::after {
+		content: '';
+		position: absolute;
+		top: 100%;
+		left: 0;
+		right: 0;
+		height: 0.375rem;
+	}
+	.card-action:has(button:focus-visible) .card-action-tip { visibility: visible; }
+	@media (hover: hover) {
+		.card-action:hover .card-action-tip { visibility: visible; }
+	}
+	.tips-dismissed .card-action-tip { display: none; }
+</style>

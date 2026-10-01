@@ -143,8 +143,10 @@ picks. Search dismisses on Escape or blur and selects only results matching the
 current query. Daily picks enrich surprise only once available.
 
 Feed cards center images between the heading and a five-line preview, preserve their
-aspect ratio, and omit repeat Wikimedia files within a tangent. Read article and
-Follow related carry different visual weight; Remember interest stays separate.
+aspect ratio, and omit repeat Wikimedia files within a tangent. A single compact
+action row gives Read primary weight, Explore a quieter text treatment, and an
+interest star at the end. Explanations appear on hover or keyboard focus, with
+descriptive accessible names and 44 px touch targets.
 
 The map uses the whole viewport below the app header. Desktop selections sit beside
 the canvas; phones use a bottom panel. Every point represents a real article in the
@@ -159,7 +161,7 @@ while open on a phone and stays within the viewport at every scroll position.
 
 **13 components**, all in `src/lib/components/` (flat, no domain subdirs). Grouped by role:
 
-- **Feed & reading** — `ArticleCard` (centered media, a five-line preview, Read article / Follow related actions, and a separate Remember interest toggle; joins the trail on first view), `ArticleReader` (full article, compact Quick facts, and direct access to Sources; desktop pane follows measured header height), `SkeletonCard` (feed-card loading placeholder), `ActionHint` (one-time explanation of reading, following, and personalization), `LinkPreview` (hover peek of an in-article link — pointer-fine only, inert on touch).
+- **Feed & reading** — `ArticleCard` (centered media, a five-line preview, compact Read / Explore actions and an interest star; joins the trail on first view), `ArticleReader` (full article, compact Quick facts, and direct access to Sources; desktop pane follows measured header height), `SkeletonCard` (feed-card loading placeholder), `ActionHint` (one-time explanation of reading, exploring, and personalization), `LinkPreview` (hover peek of an in-article link — pointer-fine only, inert on touch).
 - **Trail & connections** — `TrailPanel` (the trail of articles you've actually reached; jump back to waypoints), `ConnectionBreadcrumb` ("came from" link back to a card's source), `RelationIcon` (geometric icon for a connection's relation type — the shared node/edge/point vocabulary).
 - **Brand & chrome** — `BrandMark` (wordmark + tangent-line logo with the lone ember dot at the touch-point), `Drawer` (accessible native `<dialog>` slide-in panel primitive; focus-restoring close).
 - **Settings & account** — `ProfilePanel` (Settings drawer: compact account shortcut, appearance, feed flavor, learned interests), `AccountPanel` (dedicated sign-in/account drawer), `AccountSection` (shared account forms), `ThemePicker` (four compact appearance choices).

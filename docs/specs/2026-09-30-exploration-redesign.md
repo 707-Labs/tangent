@@ -4,9 +4,10 @@
 
 The feed's old thumbnails left empty space between the heading and excerpt. Images
 now sit in a centered, bounded row with their original aspect ratio; previews stop
-after five lines so reading and steering remain reachable. Read article opens the
-full text. Follow related adds a connected topic. Remember interest changes future
-suggestions independently of navigation.
+after five lines so reading and steering remain reachable. A compact row offers
+Read for the full text, Explore for a connected topic, and an interest star for
+future suggestions. Each has a 44 px touch target; explanatory copy is available
+on hover or keyboard focus instead of filling every card.
 
 Repeated Wikimedia files appear once per tangent, using repository, file name, and
 page identity rather than thumbnail width. Article metadata remains intact. Unknown
