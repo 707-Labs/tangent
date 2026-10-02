@@ -133,7 +133,7 @@ morphs the shell into a two-pane split (`lg:max-w-7xl`) via a one-shot `transiti
 |---|---|
 | `/` | The infinite feed: read connected previews, choose an Explore destination, save articles, or give explicit feedback; open the reader and trail. Browser history preserves article and feed position. |
 | `/start` | New tangent: search Wikipedia or pick from "Today on Wikipedia" (featured / DYK / on this day / news / trending) to seed a fresh feed. Recent tangents have explicit Resume links. |
-| `/graph` | A full-window article atlas with seven topic regions. A static snapshot supplies real articles, previews, connections and fixed positions. The overview draws the whole collection; zoom reveals more names. Selecting a bundled article shows its preview and known links immediately. Search also imports articles beyond the atlas. Screen-space label collision checks and focused connections keep exploration readable; dotted paths show visits. Drag, scroll, pinch, keyboard and zoom controls navigate the canvas. Read in place or start a feed from the selection. Without `?seed=`, it resumes the feed's chain tip when available. |
+| `/graph` | A full-window constellation of real articles in seven topic regions, laid out from their links. A static snapshot supplies articles, previews, connections and positions. The overview names the regions; zooming in names more articles. Each name shows across a fixed zoom range, so panning never changes which names show. Selecting a bundled article shows its preview and known links immediately. Search also imports articles beyond the atlas. Focused connections keep exploration readable; dotted paths show visits. Drag, wheel, trackpad, pinch, keyboard and zoom controls navigate the canvas. Read in place or start a feed from the selection. Without `?seed=`, it resumes the feed's chain tip when available. |
 | `/about` | Static page — what Tangent is, where content comes from, licensing and privacy. |
 | `/terms` | Terms of Use + Privacy in one plain-language page. |
 | `/auth/verify` | Magic-link verification landing (sign-in token check; shows recovery copy on a spent/expired link). |
@@ -157,14 +157,20 @@ history stores a visible waypoint and offset to survive the reader's width chang
 Saved articles, recent tangents, map visits, and reading positions are device-local.
 
 The map uses the whole viewport below the app header. Desktop selections sit beside
-the canvas; phones use a bottom panel. Every point represents a real article in the
-loaded collection. Local search reaches bundled articles immediately, and Wikipedia
-search extends the map beyond that sample. More labels appear with closer zoom;
-connections stay focused on the selection. Named neighborhood landmarks appear at
-intermediate zoom, and Browse offers three editorial routes with numbered stops.
-These signposts retain the atlas's fixed coordinates; they are not new computed
-clusters. Three ranked connections lead each selection, with more in a disclosure.
-The reader replaces the map controls
+the canvas; phones use a bottom panel. The opening view fits the whole map below the
+search and orientation panels. Every point represents a real article in the loaded
+collection, sized by its links, and linked articles sit together
+(`docs/specs/2026-10-02-constellation-map.md`). A soft haze marks each region at the
+overview and recedes as a region fills the view. Region names sit on a blurred shadow
+and slide inward rather than clip at the sides. Names never overlap, and zooming in
+only adds names. Local search reaches bundled articles immediately, and Wikipedia
+search extends the map beyond that sample. Connections stay focused on the selection.
+Long moves pull back and close in; wheel notches and zoom buttons glide about the
+pointer, trackpad scrolls pan, and pinches zoom directly. Reduced motion jumps instead.
+Browse lists each region's neighborhoods, each starting at a landmark article, and
+three editorial routes with numbered stops. Three ranked connections lead each
+selection, with more in a disclosure. A visually hidden list mirrors the names in
+view for keyboard and screen-reader users. The reader replaces the map controls
 while open on a phone and stays within the viewport at every scroll position.
 
 ---
