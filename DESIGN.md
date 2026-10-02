@@ -210,6 +210,21 @@ Components live in `src/lib/components/` (flat, no domain subdirs). Grouped by r
 
 ---
 
+## Share Cards
+
+Feed and article-map links (`/?seed=`, `reader=`, `card=`; `/graph?seed=`, `reader=`)
+unfurl as the article they point at. Every other page shares the site card,
+`static/og.png`, drawn from `scripts/og-card.html`. Article cards come from
+`/og?title=…&v=N` at 1200×630 in the site's language: the BrandMark lockup at header
+proportions, the title in Newsreader, Wikipedia's short description in Newsreader italic,
+and the lead image in a rounded panel. Photographs fill the panel; diagrams and maps sit
+whole. Articles without a usable image get a typographic card anchored by a large ghost of
+the mark. The ember stays on the mark's dot. Crawlers cache cards by URL, so bump
+`CARD_VERSION` in `src/lib/share/meta.ts` with any visual change. Rationale and limits:
+`docs/specs/2026-10-02-share-cards.md`.
+
+---
+
 ## Maintaining This Document
 
 When new design decisions are made:
