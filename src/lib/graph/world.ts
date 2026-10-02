@@ -8,15 +8,19 @@ export interface Region {
 	titles: readonly string[];
 }
 
-/** Real articles are the landmarks. Background stars never stand in for articles. */
+/**
+ * Real articles are the landmarks. Background stars never stand in for articles.
+ * Centers sit at equal spacing on an ellipse; each region's hub is pinned at its center by
+ * scripts/layout-atlas.ts, so moving a center means re-running that layout.
+ */
 export const REGIONS: readonly Region[] = [
-	{ id: 'history', label: 'History', x: -2100, y: -1250, titles: ['History', 'Ancient Greece', 'Roman Empire', 'Silk Road', 'Industrial Revolution', 'Maya civilization'] },
-	{ id: 'nature', label: 'Nature', x: 0, y: -1850, titles: ['Nature', 'Octopus', 'Coral reef', 'Fungi', 'Rainforest', 'Evolution'] },
-	{ id: 'science', label: 'Science', x: 2100, y: -1250, titles: ['Science', 'Quantum mechanics', 'Astronomy', 'Periodic table', 'Black hole', 'DNA'] },
-	{ id: 'arts', label: 'Arts', x: -2450, y: 1050, titles: ['The arts', 'Music', 'Painting', 'Architecture', 'Film', 'Literature'] },
-	{ id: 'people', label: 'People', x: -700, y: 1550, titles: ['Human', 'Ada Lovelace', 'Leonardo da Vinci', 'Marie Curie', 'Srinivasa Ramanujan', 'Wangari Maathai'] },
-	{ id: 'places', label: 'Places', x: 1100, y: 1550, titles: ['Geography', 'Earth', 'Iceland', 'Kyoto', 'Amazon River', 'Antarctica'] },
-	{ id: 'technology', label: 'Technology', x: 2650, y: 750, titles: ['Technology', 'Computer', 'Internet', 'Spaceflight', 'Robotics', 'Printing press'] }
+	{ id: 'history', label: 'History', x: -1780, y: -1130, titles: ['History', 'Ancient Greece', 'Roman Empire', 'Silk Road', 'Industrial Revolution', 'Maya civilization'] },
+	{ id: 'nature', label: 'Nature', x: 0, y: -1600, titles: ['Nature', 'Octopus', 'Coral reef', 'Fungi', 'Rainforest', 'Evolution'] },
+	{ id: 'science', label: 'Science', x: 1780, y: -1130, titles: ['Science', 'Quantum mechanics', 'Astronomy', 'Periodic table', 'Black hole', 'DNA'] },
+	{ id: 'arts', label: 'Arts', x: -2400, y: 450, titles: ['The arts', 'Music', 'Painting', 'Architecture', 'Film', 'Literature'] },
+	{ id: 'people', label: 'People', x: -920, y: 1490, titles: ['Human', 'Ada Lovelace', 'Leonardo da Vinci', 'Marie Curie', 'Srinivasa Ramanujan', 'Wangari Maathai'] },
+	{ id: 'places', label: 'Places', x: 920, y: 1490, titles: ['Geography', 'Earth', 'Iceland', 'Kyoto', 'Amazon River', 'Antarctica'] },
+	{ id: 'technology', label: 'Technology', x: 2400, y: 450, titles: ['Technology', 'Computer', 'Internet', 'Spaceflight', 'Robotics', 'Printing press'] }
 ];
 
 export interface WorldNode extends SearchResult {
@@ -32,7 +36,6 @@ export interface WorldNode extends SearchResult {
 
 export interface Camera { x: number; y: number; k: number }
 export interface Viewport { width: number; height: number }
-export interface ScreenNode { node: WorldNode; x: number; y: number }
 
 export function titleHash(title: string): number {
 	let hash = 2166136261;
@@ -137,45 +140,6 @@ export function zoomCamera(camera: Camera, factor: number, pointer: { x: number;
 		y: pointer.y - (pointer.y - camera.y) * k / camera.k, k };
 }
 
-export function visibleNodes(nodes: readonly WorldNode[], camera: Camera, viewport: Viewport, focus: string | null): ScreenNode[] {
-	const priority: ScreenNode[] = [];
-	const cells = new Map<string, ScreenNode[]>();
-	for (const node of nodes) {
-		const point = project(node, camera);
-		if (point.x < -70 || point.y < -70 || point.x > viewport.width + 70 || point.y > viewport.height + 70) continue;
-		const item = { node, ...point };
-		if (node.title === focus) priority.unshift(item);
-		else if (node.hub) priority.push(item);
-		else {
-			const key = `${Math.floor(point.x / 90)},${Math.floor(point.y / 90)}`;
-			const cell = cells.get(key) ?? [];
-			if (cell.length < 4) cell.push(item);
-			cells.set(key, cell);
-		}
-	}
-	// Round-robin spatial cells gives every part of the viewport representation,
-	// without sorting thousands of points every time the camera moves.
-	for (let depth = 0; depth < 4 && priority.length < 250; depth++) {
-		for (const cell of cells.values()) {
-			if (cell[depth]) priority.push(cell[depth]);
-			if (priority.length === 250) break;
-		}
-	}
-	return priority.slice(0, 250);
-}
-
-/** Canvas points remain selectable even when their DOM label is culled. */
-export function hitNode(nodes: readonly WorldNode[], camera: Camera, point: { x: number; y: number }, radius = 14): WorldNode | null {
-	let closest: WorldNode | null = null;
-	let distance = radius;
-	for (const node of nodes) {
-		const screen = project(node, camera);
-		const candidate = Math.hypot(point.x - screen.x, point.y - screen.y);
-		if (candidate < distance) { distance = candidate; closest = node; }
-	}
-	return closest;
-}
-
 export function atlasWorld(articles: readonly (SearchResult & { x: number; y: number; region: string; hub: boolean; neighbors: string[] })[], existing: readonly WorldNode[] = []): WorldNode[] {
 	const titles = new Set(articles.map((article) => article.title));
 	return [...articles.map((article) => ({ title: article.title, description: article.description, thumbnail: article.thumbnail,
@@ -194,33 +158,24 @@ export function localSearch(nodes: readonly WorldNode[], query: string, aliases:
 	return ranked.slice(0, limit).map(({ node }) => node);
 }
 
-/** Label rectangles are in screen pixels, so zooming out never creates overlapping text. */
-export interface LabelRect { x: number; y: number; width: number; height: number }
-export function visibleLabels(nodes: readonly ScreenNode[], camera: Camera, focus: string | null, reserved: readonly LabelRect[] = []): Set<string> {
-	const labels = new Set<string>();
-	const boxes: LabelRect[] = [...reserved];
-	const groups = new Map<string, ScreenNode[]>();
-	const ordered = nodes.filter(({ node }) => node.title === focus || node.hub);
-	for (const item of nodes) {
-		if (item.node.title === focus || item.node.hub) continue;
-		const group = groups.get(item.node.region) ?? [];
-		group.push(item);
-		groups.set(item.node.region, group);
-	}
-	for (let index = 0; index < nodes.length; index++) for (const group of groups.values()) if (group[index]) ordered.push(group[index]);
-	for (const { node, x, y } of ordered) {
-		if (camera.k < 0.11 && !node.hub && node.title !== focus) continue;
-		const width = Math.min(170, node.title.length * 7 + 20);
-		const box = { x: x - width / 2, y: y + 18, width, height: 20 };
-		if (node.title !== focus && boxes.some((other) => box.y < other.y + other.height + 8 && box.y + box.height + 8 > other.y && box.x < other.x + other.width + 12 && box.x + box.width + 12 > other.x)) continue;
-		labels.add(node.title);
-		boxes.push(box);
-		if (labels.size >= 36) break;
-	}
-	return labels;
+/** World extent of the atlas articles plus room for their names; tests keep the atlas inside it. */
+export const MAP_EXTENT = { minX: -3000, maxX: 2900, minY: -2100, maxY: 1850 } as const;
+
+/**
+ * Top of the open map while nothing is selected: below the search panel on desktop, and on phones
+ * below the search panel, browse button and orientation card stacked over the map (graph page CSS).
+ */
+export function mapTop(viewport: Viewport): number {
+	return viewport.width > 760 ? 104 : 288;
 }
 
+/** Fits the whole map between the panels above it and the map controls below. */
 export function overviewCamera(viewport: Viewport): Camera {
-	const k = Math.max(0.045, Math.min(0.28, (viewport.width - 80) / 6500, (viewport.height - 100) / 4600));
-	return { x: viewport.width / 2, y: viewport.height / 2, k };
+	const top = mapTop(viewport);
+	const bottom = 72;
+	const side = 24;
+	const spanX = MAP_EXTENT.maxX - MAP_EXTENT.minX, spanY = MAP_EXTENT.maxY - MAP_EXTENT.minY;
+	const k = Math.max(0.045, Math.min(0.28, (viewport.width - 2 * side) / spanX, (viewport.height - top - bottom) / spanY));
+	return { x: viewport.width / 2 - (MAP_EXTENT.minX + spanX / 2) * k,
+		y: top + (viewport.height - top - bottom) / 2 - (MAP_EXTENT.minY + spanY / 2) * k, k };
 }

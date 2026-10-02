@@ -1,6 +1,6 @@
 import type { Article, Thumbnail } from '$lib/wikipedia/types';
 
-export const ATLAS_BOUNDS = { minX: -3250, maxX: 3250, minY: -2300, maxY: 2300 } as const;
+export const ATLAS_BOUNDS = { minX: -3500, maxX: 3500, minY: -2600, maxY: 2600 } as const;
 export const ATLAS_REGIONS = ['history', 'nature', 'science', 'arts', 'people', 'places', 'technology'] as const;
 
 export interface AtlasArticle extends Article {

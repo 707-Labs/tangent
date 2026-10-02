@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { initialWorld, atlasWorld, localSearch, hitNode, importNode, canonicalizeNode, appendVisit, addNeighborhood, overviewCamera, centeredCamera, zoomCamera, project, visibleNodes, visibleLabels, type WorldNode } from '../src/lib/graph/world';
+import { readFileSync } from 'node:fs';
+import { initialWorld, atlasWorld, localSearch, importNode, canonicalizeNode, appendVisit, addNeighborhood, overviewCamera, mapTop, centeredCamera, zoomCamera, project, MAP_EXTENT, REGIONS } from '../src/lib/graph/world';
+import { parseAtlas } from '../src/lib/graph/atlas';
+import { MIN_SEPARATION } from '../scripts/layout-atlas';
 import type { Candidate } from '../src/lib/wikipedia/types';
 
 const candidate = (title: string): Candidate => ({ title, description: null, thumbnail: null, categories: [], position: 0, relation: 'link', isDisambiguation: false });
@@ -94,25 +97,6 @@ describe('article world', () => {
 			expect(next.filter((other) => other.title !== node.title).every((other) => Math.hypot(other.x - node.x, other.y - node.y) >= 85)).toBe(true);
 		}
 	});
-	it('culls world nodes to the viewport and bounds rendering even with dense imports', () => {
-		const camera = { x: 0, y: 0, k: 1 };
-		const nodes: WorldNode[] = Array.from({ length: 800 }, (_, index) => ({ ...initialWorld()[0], title: `Node ${index}`, x: index % 500, y: index % 300, hub: false }));
-		const visible = visibleNodes([...nodes, { ...nodes[0], title: 'Offscreen', x: 3000 }], camera, { width: 600, height: 400 }, 'Node 500');
-		expect(visible.length).toBeLessThanOrEqual(250);
-		expect(visible.length).toBeGreaterThan(0);
-		expect(visible[0].node.title).toBe('Node 500');
-		expect(visible.some((item) => item.node.title === 'Offscreen')).toBe(false);
-	});
-	it('uses semantic zoom and collision guards rather than shrinking labels together', () => {
-		const world = initialWorld();
-		const viewport = { width: 1200, height: 800 };
-		const camera = { ...overviewCamera(viewport), k: 0.08 };
-		const visible = visibleNodes(world, camera, viewport, null);
-		const labels = visibleLabels(visible, camera, null);
-		expect([...labels].every((title) => world.find((node) => node.title === title)?.hub)).toBe(true);
-		const crowded = world.map((node, index) => ({ node, x: index * 4, y: 30 }));
-		expect(visibleLabels(crowded, { ...camera, k: 1 }, null).size).toBeLessThan(5);
-	});
 	it('keeps static positions and every atlas node when live exploration exceeds its budget', () => {
 		const articles = Array.from({ length: 2000 }, (_, index) => ({ title: `Atlas ${index}`, description: 'Mapped article', thumbnail: null,
 			x: index, y: index % 100, region: 'science', hub: false, neighbors: ['Atlas 1'] }));
@@ -123,23 +107,53 @@ describe('article world', () => {
 		expect(world.filter((node) => node.atlas)).toHaveLength(2000);
 		expect(world.filter((node) => !node.atlas).length).toBeLessThanOrEqual(1200);
 	});
-	it('keeps article labels clear of the larger topic-region controls', () => {
-		const node = { ...initialWorld()[0], hub: false };
-		const labels = visibleLabels([
-			{ node: { ...node, title: 'Behind region' }, x: 100, y: 62 },
-			{ node: { ...node, title: 'Clear article' }, x: 300, y: 62 }
-		], { x: 0, y: 0, k: 0.2 }, null, [{ x: 70, y: 70, width: 80, height: 44 }]);
-		expect(labels.has('Behind region')).toBe(false);
-		expect(labels.has('Clear article')).toBe(true);
+	it('fits the whole map between the search panel and the controls at desktop and phone sizes', () => {
+		for (const viewport of [{ width: 1280, height: 739 }, { width: 390, height: 775 }, { width: 375, height: 598 }, { width: 320, height: 560 }]) {
+			const camera = overviewCamera(viewport);
+			const top = mapTop(viewport);
+			expect(top).toBe(viewport.width > 760 ? 104 : 288);
+			const corners = [project({ x: MAP_EXTENT.minX, y: MAP_EXTENT.minY }, camera), project({ x: MAP_EXTENT.maxX, y: MAP_EXTENT.maxY }, camera)];
+			expect(corners[0].x).toBeGreaterThanOrEqual(24 - 1e-9);
+			expect(corners[1].x).toBeLessThanOrEqual(viewport.width - 24 + 1e-9);
+			expect(corners[0].y).toBeGreaterThanOrEqual(top - 1e-9);
+			expect(corners[1].y).toBeLessThanOrEqual(viewport.height - 72 + 1e-9);
+		}
 	});
-	it('hits real canvas points independently of the bounded DOM overlay', () => {
-		const world = atlasWorld(Array.from({ length: 2000 }, (_, index) => ({ title: `Article ${index}`, description: null, thumbnail: null,
-			x: index, y: 100, region: 'history', hub: false, neighbors: [] })));
-		const camera = { x: 10, y: 20, k: 1 };
-		const target = world[999];
-		expect(visibleNodes(world, camera, { width: 2200, height: 500 }, null).some(({ node }) => node === target)).toBe(false);
-		expect(hitNode(world, camera, project(target, camera))?.title).toBe(target.title);
-		expect(hitNode(world, camera, { x: 500, y: 500 })).toBeNull();
+	it('keeps the bundled atlas inside the map extent with every hub at its region center', () => {
+		const data = parseAtlas(JSON.parse(readFileSync(new URL('../static/graph/atlas.v1.json', import.meta.url), 'utf8')))!;
+		for (const node of data.nodes) {
+			expect(node.x).toBeGreaterThanOrEqual(MAP_EXTENT.minX);
+			expect(node.x).toBeLessThanOrEqual(MAP_EXTENT.maxX);
+			expect(node.y).toBeGreaterThanOrEqual(MAP_EXTENT.minY);
+			expect(node.y).toBeLessThanOrEqual(MAP_EXTENT.maxY);
+		}
+		for (const region of REGIONS) {
+			const hub = data.nodes.find((node) => node.hub && node.region === region.id);
+			expect(hub, region.id).toBeDefined();
+			expect(Math.hypot(hub!.x - region.x, hub!.y - region.y)).toBeLessThan(1);
+		}
+	});
+	it('spaces bundled articles far enough apart that each point stays clickable', () => {
+		const { nodes } = parseAtlas(JSON.parse(readFileSync(new URL('../static/graph/atlas.v1.json', import.meta.url), 'utf8')))!;
+		let closest = Infinity;
+		for (let i = 0; i < nodes.length; i++) for (let j = i + 1; j < nodes.length; j++) {
+			closest = Math.min(closest, Math.hypot(nodes[i].x - nodes[j].x, nodes[i].y - nodes[j].y));
+		}
+		expect(closest).toBeGreaterThanOrEqual(MIN_SEPARATION);
+	});
+	it('lays the bundled atlas out from its links, so linked articles sit together', () => {
+		const { nodes } = parseAtlas(JSON.parse(readFileSync(new URL('../static/graph/atlas.v1.json', import.meta.url), 'utf8')))!;
+		const median = (values: Float64Array) => values.sort()[values.length >> 1];
+		const byTitle = new Map(nodes.map((node) => [node.title, node]));
+		const links = nodes.flatMap((node) => node.neighbors.flatMap((title) => {
+			const other = byTitle.get(title);
+			return other && node.title < title ? [Math.hypot(node.x - other.x, node.y - other.y)] : [];
+		}));
+		const pairs = new Float64Array(nodes.length * (nodes.length - 1) / 2);
+		let n = 0;
+		for (let i = 0; i < nodes.length; i++) for (let j = i + 1; j < nodes.length; j++) pairs[n++] = Math.hypot(nodes[i].x - nodes[j].x, nodes[i].y - nodes[j].y);
+		// Crawl positions, which an interrupted build:atlas leaves behind, measure about 0.28 here.
+		expect(median(Float64Array.from(links)) / median(pairs)).toBeLessThan(0.2);
 	});
 	it('finds canonical atlas titles and aliases locally without a global search response', () => {
 		const world = importNode(initialWorld(), { title: 'United States', description: 'Country', thumbnail: null });
