@@ -344,6 +344,13 @@
 		}
 		return map;
 	});
+	// The picture the open article's card is showing in the feed, if any. The two-pane
+	// reader hides a lead image that repeats it; phones and the graph keep theirs.
+	const readerFeedImage = $derived.by(() => {
+		const title = reader.current;
+		const card = title ? feed.cards.find((entry) => entry.article.title === title && imageCardIds.has(entry.id)) : undefined;
+		return card?.article.thumbnail?.source ?? null;
+	});
 </script>
 
 <svelte:head>
@@ -447,6 +454,6 @@
 	</div>
 
 	{#if reader.isOpen}
-		<ArticleReader onDive={handleDive} />
+		<ArticleReader onDive={handleDive} feedImage={readerFeedImage} />
 	{/if}
 </div>

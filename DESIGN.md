@@ -175,6 +175,9 @@ descriptive accessible names and 44 px touch targets.
 Reader Contents jumps to real headings; citation previews keep source access near
 the passage. Reading positions restore with open Sources and Quick facts. Feed
 history stores a visible waypoint and offset to survive the reader's width change.
+In the two-pane layout the article's feed card sits beside the reader, so the reader
+drops a lead image that repeats the picture that card is showing. Phones, the graph,
+and articles whose card shows no matching picture keep the lead image.
 Saved articles, recent tangents, History, map visits, and reading positions are device-local.
 
 The map uses the whole viewport below the app header. Desktop selections sit beside
