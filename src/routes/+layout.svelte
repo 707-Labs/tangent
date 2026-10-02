@@ -17,7 +17,7 @@
 	import BrandMark from '$lib/components/BrandMark.svelte';
 	import ProfilePanel from '$lib/components/ProfilePanel.svelte';
 	import AccountPanel from '$lib/components/AccountPanel.svelte';
-	import { SlidersHorizontal, Plus, Waypoints, Star } from '@lucide/svelte';
+	import { SlidersHorizontal, Plus, Waypoints, Star, UserRound } from '@lucide/svelte';
 	import { profile } from '$lib/engagement/profile.svelte';
 	import { reader } from '$lib/reader/readerState.svelte';
 	import { auth } from '$lib/auth/authState.svelte';
@@ -87,26 +87,38 @@
 
 {#if savedArticles.isOpen}<SavedPanel onOpen={(title) => { if (page.url.pathname === '/' || page.url.pathname === '/graph') reader.open(title); else void goto(`/?seed=${encodeURIComponent(title)}&reader=${encodeURIComponent(title)}`); }} />{/if}
 
-<div class="flex min-h-dvh flex-col" style:--app-header-height={headerHeight === null ? 'calc(69px + env(safe-area-inset-top))' : `${headerHeight}px`}>
+<!-- overflow-x: clip keeps any over-wide descendant from widening the document. Unlike
+     hidden it creates no scroll container, so the sticky header and window scrolling are
+     unaffected; fixed and top-layer UI (dialogs, previews, lightbox) is not clipped. -->
+<div class="flex min-h-dvh flex-col overflow-x-clip" style:--app-header-height={headerHeight === null ? 'calc(69px + env(safe-area-inset-top))' : `${headerHeight}px`}>
 	<!-- Full-bleed bar: the border spans the viewport; only the inner row is
 	     constrained to the reading column so the nav doesn't float mid-screen.
 	     The inner row's max-width morphs when the reader opens — a deliberate
 	     one-shot layout transition (not per-frame); reduced-motion snaps it. -->
 	<header bind:this={header} class="sticky top-0 z-20 border-b border-hair bg-void pt-[env(safe-area-inset-top)]">
+		<!-- The row is a size container: its labels collapse by the row's own width rather
+		     than the viewport's. DESIGN.md (Layout & Navigation) lists the rules new
+		     header items follow so the row degrades instead of overflowing. -->
 		<div
-			class="mx-auto flex w-full items-center justify-between px-4 py-3
+			class="@container/header-row mx-auto flex w-full items-center gap-3 px-4 py-3
 				transition-[max-width] duration-200 ease-out {shellWidth}"
 		>
-			<!-- -m/p pair grows the tap target past 44px without shifting the visual position. -->
-			<a
-				href="/"
-				class="-m-2.5 inline-flex items-center p-2.5 transition-opacity hover:opacity-80"
-				aria-label="Tangent home"
-			>
-				<BrandMark />
-			</a>
+			<!-- The brand slot gets only the width the actions leave over, so the wordmark is
+			     the first label to go when the actions grow; the mark itself always stays. -->
+			<div class="@container/brand flex min-w-6 flex-1 items-center">
+				<!-- -m/p pair grows the tap target to 44px without shifting the visual position. -->
+				<a
+					href="/"
+					class="-m-2.5 inline-flex min-w-11 items-center p-2.5 transition-opacity hover:opacity-80"
+					aria-label="Tangent home"
+				>
+					<BrandMark wordmarkClass="hidden @min-[5.25rem]/brand:inline" />
+				</a>
+			</div>
 
-			<div class="flex items-center gap-1 sm:gap-2">
+			<!-- Actions keep their natural width and wrap onto a second line rather than
+			     overflow when the row cannot hold them. -->
+			<div class="flex min-w-0 flex-wrap items-center justify-end gap-1 @min-[38rem]/header-row:gap-2">
 				<!-- Graph: the explorable canvas. Seeds itself from the feed's chain tip
 				     (persisted trail), so mid-feed it opens the map of where you are. -->
 				<a
@@ -114,7 +126,7 @@
 					aria-label="Explore the article graph"
 					title="Explore the article graph"
 					aria-current={page.url.pathname === '/graph' ? 'page' : undefined}
-					class="icon-btn hidden items-center justify-center rounded-full p-1.5 sm:inline-flex
+					class="icon-btn hidden items-center justify-center rounded-full p-1.5 @min-[38rem]/header-row:inline-flex
 						transition-colors hover:bg-surface-2 hover:text-ink
 						{page.url.pathname === '/graph' ? 'text-ink' : 'text-muted'}"
 				>
@@ -125,15 +137,18 @@
 
 				<button type="button" onclick={() => savedArticles.open()} aria-label="Saved articles" title="Saved articles" class="flex size-11 shrink-0 items-center justify-center rounded-full text-muted hover:bg-surface-2 hover:text-ink"><Star class="size-5" aria-hidden="true" /></button>
 
+				<!-- On the narrowest rows the label gives way to an icon; the text stays in
+				     the accessibility tree as the button's name. -->
 				<button
 					type="button"
 					onclick={() => (accountOpen = true)}
 					aria-haspopup="dialog"
 					aria-expanded={accountOpen}
-					class="inline-flex min-h-11 shrink-0 items-center rounded-full px-2 text-sm font-medium
-						text-ink transition-colors hover:bg-surface-2"
+					class="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full px-2 text-sm
+						font-medium text-ink transition-colors hover:bg-surface-2"
 				>
-					{auth.isAuthed ? 'Account' : 'Sign in'}
+					<UserRound class="size-5 @min-[16rem]/header-row:hidden" aria-hidden="true" />
+					<span class="sr-only @min-[16rem]/header-row:not-sr-only">{auth.isAuthed ? 'Account' : 'Sign in'}</span>
 				</button>
 
 				<!-- Settings includes feed preferences and appearance. -->
@@ -159,15 +174,10 @@
 					<AccountPanel onClose={() => (accountOpen = false)} />
 				{/if}
 
-				<!-- The wordmark + this pill can overflow the bar on narrow phones, which
-				     widens the document and makes the feed column look detached from the
-				     viewport. Collapse the label to an icon-only button there; the
-				     aria-label keeps the accessible name. Threshold is 26rem, not 20rem:
-				     with the graph icon and a trail badge also in the row, 375px screens
-				     had under 4px of slack and anything below 370px overflowed. -->
 				<!-- Read-fill primary pill (Ben's NewTangent kind): parchment fill with
 				     surface-2 text. The read/surface-2 pair inverts naturally in light
-				     themes, which is exactly his NewTangentLight colorway. -->
+				     themes, which is exactly his NewTangentLight colorway. On rows narrower
+				     than 24rem it is icon-only; the aria-label keeps the accessible name. -->
 				<a
 					href="/start"
 					data-cta
@@ -177,7 +187,7 @@
 						hover:opacity-90 active:scale-95"
 				>
 					<Plus class="size-4" aria-hidden="true" />
-					<span class="hidden min-[26rem]:inline">New tangent</span>
+					<span class="hidden @min-[24rem]/header-row:inline">New tangent</span>
 				</a>
 			</div>
 		</div>

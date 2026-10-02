@@ -119,11 +119,30 @@ Layout defined in `src/routes/+layout.svelte`.
 
 **Navigation pattern:** sticky **top bar** (full-bleed border, inner row constrained to the
 reading column). Header holds the BrandMark (home), Saved, a visible Sign in/Account action,
-Settings, and a "New tangent" CTA. The graph shortcut appears on wider screens and remains
+Settings, and a "New tangent" CTA. The graph shortcut appears on wider header rows and remains
 available in Settings on phones. The Account drawer also holds **History**: the articles you've
 reached in the current tangent. It is device-local, so it shows whether or not you're signed in.
 Choosing an entry scrolls the feed back to that card, or, from another page, returns to the feed
 at that card. A footer carries Wikipedia attribution (CC BY-SA 4.0) + About / Terms / Source links.
+
+**Header overflow:** the page never scrolls sideways, whatever the header holds.
+
+- The app root clips horizontal overflow (`overflow-x: clip`), so no descendant can widen the
+  document. Keep it there rather than `overflow-x: hidden` on `html`/`body`: `clip` makes no
+  scroll container, so the sticky header and window scrolling are unaffected, and fixed or
+  top-layer UI (drawers, previews, lightbox) is not clipped.
+- The clip is a backstop, not the layout. The header row is a size container
+  (`@container/header-row`) and gives way in order as it narrows: the wordmark goes first (the
+  brand slot gets only the width the actions leave over), then the "New tangent" label (rows
+  under 24rem), then the Sign in/Account text becomes an icon (rows under 16rem). The graph
+  shortcut needs a 38rem row. If the actions still don't fit, they wrap onto a second line;
+  nothing is clipped.
+- New header items go in the actions group as icon buttons with an `aria-label` and `title`,
+  `shrink-0`, and a 44 px touch target on coarse pointers (`icon-btn` or `size-11`). A text
+  label collapses on a `@min-[…]/header-row:` variant, never a viewport breakpoint, and the
+  control keeps its accessible name. CSS can't measure sibling widths, so only the wordmark
+  collapse responds to content: after adding an item, check that the stock header stays on one
+  line at 320, 375 and 390 px, and raise the label thresholds if it wraps.
 
 **Shell width:** content is a narrow reading column (`max-w-2xl`). Opening the article reader
 morphs the shell into a two-pane split (`lg:max-w-7xl`) via a one-shot `transition-[max-width]`
