@@ -13,7 +13,7 @@ type EdgePlatform = App.Platform & { caches?: { default?: Cache } };
 
 /** A finished card only changes when the article does; CARD_VERSION handles redesigns. */
 const COMPLETE = 'public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400';
-/** A card missing its summary or photo after an upstream or decode failure; retry soon. */
+/** A card missing its photo after an upstream or decode failure; retry soon. */
 const DEGRADED = 'public, max-age=300, s-maxage=300';
 
 /**
@@ -37,8 +37,9 @@ export const GET: RequestHandler = async ({ url, platform }) => {
 	if (hit) return hit;
 
 	const source = await loadCardSource(title);
-	if (source.kind === 'missing') {
-		recordEvent(platform, 'share_card', ['missing', title]);
+	if (source.kind !== 'article') {
+		// Drawing an unconfirmed title would put any requested text on a Tangent card.
+		recordEvent(platform, 'share_card', [source.kind, title]);
 		redirect(302, '/og.png');
 	}
 	if (!drawable(source.title)) {

@@ -1,7 +1,8 @@
 /**
  * Everything a share card shows about an article, from Wikipedia's REST summary plus
- * one lead-image fetch. Each upstream call gets its own deadline, and failures degrade
- * the card instead of failing it.
+ * one lead-image fetch. Each upstream call gets its own deadline. A failed image fetch
+ * leaves the photo off the card; a failed summary means no card, because a card only
+ * shows a title Wikipedia has confirmed.
  */
 import type { Thumbnail } from '$lib/wikipedia/types';
 import { restGet, restTitlePath, USER_AGENT } from '$lib/wikipedia/client';
@@ -51,7 +52,9 @@ export type CardSource =
 			/** False when a failed or unusable upstream response (not the article itself) left something out. */
 			complete: boolean;
 	  }
-	| { kind: 'missing' };
+	| { kind: 'missing' }
+	/** Wikipedia failed or timed out, so the title is unconfirmed. */
+	| { kind: 'unavailable' };
 
 export async function loadCardSource(title: string): Promise<CardSource> {
 	let summary: SummaryResponse | null;
@@ -61,8 +64,7 @@ export async function loadCardSource(title: string): Promise<CardSource> {
 			AbortSignal.timeout(UPSTREAM_TIMEOUT_MS)
 		);
 	} catch {
-		// Wikipedia is slow or failing: a typographic card from the requested title.
-		return { kind: 'article', title, description: null, image: null, complete: false };
+		return { kind: 'unavailable' };
 	}
 	if (!summary) return { kind: 'missing' };
 

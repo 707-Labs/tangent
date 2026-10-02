@@ -69,6 +69,13 @@ describe('GET /og', () => {
 		await expect(get('title=Elephant%20Island')).rejects.toMatchObject(SITE_CARD);
 	});
 
+	it('sends the site card rather than draw a title Wikipedia could not confirm', async () => {
+		loadCardSource.mockResolvedValue({ kind: 'unavailable' });
+		renderCardPng.mockResolvedValue(PNG);
+		await expect(get('title=Any%20text%20at%20all&v=1')).rejects.toMatchObject(SITE_CARD);
+		expect(renderCardPng).not.toHaveBeenCalled();
+	});
+
 	it('renders variant spellings of a title once, under the normalized card URL', async () => {
 		loadCardSource.mockResolvedValue({ ...ARTICLE, image: null, complete: true });
 		renderCardPng.mockResolvedValue(PNG);

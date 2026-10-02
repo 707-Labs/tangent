@@ -113,15 +113,9 @@ describe('loadCardSource', () => {
 		expect(await loadCardSource('Zzqxv')).toEqual({ kind: 'missing' });
 	});
 
-	it('degrades to the requested title when Wikipedia fails', async () => {
+	it('reports Wikipedia failures as unavailable rather than trusting the requested title', async () => {
 		stubFetch(() => new Response('', { status: 503 }));
-		expect(await loadCardSource('Elephant Island')).toEqual({
-			kind: 'article',
-			title: 'Elephant Island',
-			description: null,
-			image: null,
-			complete: false
-		});
+		expect(await loadCardSource('Elephant Island')).toEqual({ kind: 'unavailable' });
 	});
 
 	it('never follows an image redirect off Wikimedia', async () => {

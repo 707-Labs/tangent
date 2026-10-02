@@ -153,11 +153,12 @@ GIF and WebP responses are accepted, capped at 4 MiB whether the size is declare
 streamed. Takumi receives the bytes under a name and never fetches anything itself.
 Animated GIFs render their first frame.
 
-Upstream error text never reaches a response. A failed or slow summary yields a typographic
-card from the requested title, and a failed image yields the card without it. When Takumi
-rejects an image it fetched (an unusual encoding, say), the card is rendered again without
-the image and cached as degraded. A missing article, an undrawable or invalid title, or a
-render failure redirects (302) to `/og.png`.
+Upstream error text never reaches a response. A failed image yields the card without it.
+When Takumi rejects an image it fetched (an unusual encoding, say), the card is rendered
+again without the image and cached as degraded. A missing article, a failed or slow
+summary, an undrawable or invalid title, or a render failure redirects (302) to `/og.png`.
+A card only shows a title Wikipedia has confirmed; drawing the requested title when the
+summary fails would let anyone set text on a tangent.page card during an outage.
 
 ## Caching
 
@@ -179,22 +180,20 @@ card, 10 minutes for a degraded one. Whether the Cache API restarts it was not v
 The only purge is a `CARD_VERSION` bump, which retires every card at once.
 
 Each outcome is recorded as a `share_card` Analytics Engine event (photo, text, degraded,
-missing, undrawable, invalid, render_failed) with the title, as `feed_served` already does.
+missing, unavailable, undrawable, invalid, render_failed) with the title, as `feed_served` already does.
 
 ## Limits
 
 - `/og` is public and has no rate limit. Each uncached title costs up to two upstream
   requests and a render. The cache absorbs repeats but not unique titles, and a missing
   title redirects without caching, so every repeat costs a summary request. The summary
-  request carries the same User-Agent as the feed's Wikipedia calls. A flood of unique
-  titles that got that User-Agent throttled would break the feed as well as cards. While
-  throttled, every card falls back to the requested title (next item). A Workers
-  rate-limiting binding on `/og`, or a separate User-Agent for card requests, would
-  contain this. Neither was added.
-- When the summary request fails (a timeout, 5xx or 429), the card is drawn from the
-  requested title. While Wikipedia is failing, `/og` will set any valid title text on a
-  tangent.page card, cached for 300 seconds. Invalid titles still redirect. This fallback
-  was a requirement. The alternative is an uncached redirect to `/og.png`.
+  request carries the same User-Agent as the feed's Wikipedia calls, so a flood of unique
+  titles that got it throttled would break the feed as well as cards. This is not a new
+  path: `/api/summary`, `/api/card`, `/api/article` and `/api/links` already send any
+  requested title to Wikipedia under that User-Agent with no limit. A rate limit belongs
+  on all of them together, so none was added here.
+- When the summary request fails (a timeout, 5xx or 429), `/og` redirects to `/og.png`
+  without caching, so a share made while Wikipedia is failing shows the site card.
 - Rendering needs more CPU than the Workers Free plan's 10 ms per request. Under bun, a
   photo card took a median 48 ms of CPU (SD 16, n = 12) and a typographic card 30 ms
   (SD 9, n = 12); production hardware and V8 will differ. Workers Paid allows 30 seconds
@@ -252,5 +251,5 @@ diacritics (Võ Nguyên Giáp). Each of these real lead images passed the header
 nonexistent title redirected to `/og.png`.
 
 Not verified: real unfurls in Discord, Slack, X or iMessage against a deployed URL; the
-degraded card and the decode fallback in workerd, which unit tests cover with a stubbed
-upstream and renderer; production startup, memory and CPU time.
+summary-failure redirect and the decode fallback in workerd, which unit tests cover with a
+stubbed upstream and renderer; production startup, memory and CPU time.
