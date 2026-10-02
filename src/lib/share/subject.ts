@@ -15,9 +15,9 @@ const VIEWS: Partial<Record<string, ShareView>> = { '/': 'feed', '/graph': 'grap
 /** MediaWiki's hard cap on a title, in UTF-8 bytes. */
 const MAX_TITLE_BYTES = 255;
 /** Characters MediaWiki never allows in a title, plus control characters and bidi isolates. */
-const ILLEGAL_TITLE = /[#<>[\]{}|\u0000-\u001f\u007f⁦-⁩]/;
+const ILLEGAL_TITLE = /[#<>[\]{}|\u0000-\u001f\u007f\u2066-\u2069]/;
 /** Direction marks and overrides, which MediaWiki strips from titles. */
-const STRIPPED_BIDI = /[‎‏‪-‮]/g;
+const STRIPPED_BIDI = /[\u200e\u200f\u202a-\u202e]/g;
 /** `.`, `..` and relative path segments, which MediaWiki forbids and URLs would resolve. */
 const RELATIVE_PATH = /^\.\.?(?:\/|$)|\/\.\.?(?:\/|$)/;
 /** Feed card ids are `${title}#${n}`; the suffix is per-feed bookkeeping, not part of the title. */

@@ -77,12 +77,12 @@ describe('normalizeTitle', () => {
 	});
 
 	it('drops the direction marks MediaWiki strips and rejects bidi isolates', () => {
-		expect(normalizeTitle('Elephant‮ Island')).toBe('Elephant Island');
-		expect(normalizeTitle('‏Moscow')).toBe('Moscow');
-		expect(normalizeTitle('Elephant ⁦Island⁩')).toBeNull();
+		expect(normalizeTitle('Elephant\u202e Island')).toBe('Elephant Island');
+		expect(normalizeTitle('\u200fMoscow')).toBe('Moscow');
+		expect(normalizeTitle('Elephant \u2066Island\u2069')).toBeNull();
 	});
 
 	it('composes Unicode the way MediaWiki stores titles', () => {
-		expect(normalizeTitle('Dvořák')).toBe('Dvořák');
+		expect(normalizeTitle('Dvor\u030cák')).toBe('Dvořák');
 	});
 });
