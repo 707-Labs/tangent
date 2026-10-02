@@ -11,7 +11,8 @@ const ACTION_BASE = 'https://en.wikipedia.org/w/api.php';
 // Overridable so offline tooling (scripts/feed-sim) identifies itself distinctly —
 // a heavy sim run must never look like production traffic to Wikimedia rate limiting.
 // The guard keeps Workers happy (`process` doesn't exist there; the default applies).
-const USER_AGENT =
+// Exported for direct Wikimedia fetches outside these helpers (e.g. share-card images).
+export const USER_AGENT =
 	globalThis.process?.env?.TANGENT_UA ?? 'Tangent/0.1 (https://tangent.page; tannervass@gmail.com)';
 
 const HEADERS = {
@@ -41,8 +42,8 @@ export function wikiUrl(title: string): string {
 }
 
 /** GET a REST v1 endpoint, e.g. `page/summary/Roman_Empire`. Returns null on 404. */
-export async function restGet<T>(path: string): Promise<T | null> {
-	const res = await fetch(`${REST_BASE}/${path}`, { headers: HEADERS });
+export async function restGet<T>(path: string, signal?: AbortSignal): Promise<T | null> {
+	const res = await fetch(`${REST_BASE}/${path}`, { headers: HEADERS, signal });
 	if (res.status === 404) return null;
 	if (!res.ok) throw new WikiError(`REST ${path} failed`, res.status);
 	return (await res.json()) as T;

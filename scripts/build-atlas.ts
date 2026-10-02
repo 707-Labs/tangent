@@ -8,6 +8,7 @@ import { ATLAS_BOUNDS, compactAtlasIntro, parseAtlas, type AtlasArticle, type At
 import { articleTitleFromHref } from '../src/lib/wikipedia/links';
 import { tokenize } from '../src/lib/feed/tokens';
 import type { Thumbnail } from '../src/lib/wikipedia/types';
+import { layoutAtlas } from './layout-atlas';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CACHE = resolve(ROOT, '.cache/atlas-v1');
@@ -137,7 +138,8 @@ async function expandPair(titles: string[]): Promise<void> {
 		await sleep(100);
 	}
 }
-async function checkpoint(): Promise<void> {
+/** Writes the crawl so far. The `final` write lays the atlas out from its links; earlier ones keep crawl positions. */
+async function checkpoint(final = false): Promise<void> {
 	const values = [...nodes.values()].map((node) => ({ ...node, outgoing: [...new Set((rawLinks.get(node.title) ?? []).map(canonical))]
 		.filter((target) => target !== node.title && nodes.has(target)), neighbors: [] as string[] }));
 	const byTitle = new Map(values.map((node) => [node.title, node]));
@@ -148,14 +150,16 @@ async function checkpoint(): Promise<void> {
 	for (const node of values) node.neighbors = [...new Set(node.neighbors)];
 	const includedAliases = Object.fromEntries(Object.keys(aliases).map((alias) => [alias, canonical(alias)])
 		.filter(([, target]) => nodes.has(target)));
-	const snapshot: AtlasData = { version: 1, generatedAt: new Date().toISOString(), language: 'en', aliases: includedAliases, nodes: values };
+	const laid = final ? layoutAtlas(values) : null;
+	if (laid) console.log(JSON.stringify({ layout: laid.stats }));
+	const snapshot: AtlasData = { version: 1, generatedAt: new Date().toISOString(), language: 'en', aliases: includedAliases, nodes: laid?.nodes ?? values };
 	if (!parseAtlas(snapshot)) throw new Error('Generated atlas failed validation.');
 	const json = JSON.stringify(snapshot);
 	await writeFile(`${OUTPUT}.tmp`, json);
 	await rename(`${OUTPUT}.tmp`, OUTPUT);
 	console.log(JSON.stringify({ nodes: values.length, directedEdges: values.reduce((sum, node) => sum + node.outgoing.length, 0),
 		bytes: Buffer.byteLength(json), requests, cacheHits, failures, regions: Object.fromEntries(REGIONS.map((region) =>
-			[region.id, values.filter((node) => node.region === region.id).length])) }));
+			[region.id, snapshot.nodes.filter((node) => node.region === region.id).length])) }));
 }
 
 await mkdir(CACHE, { recursive: true });
@@ -190,4 +194,5 @@ while (nodes.size < TARGET) {
 	if (nodes.size) await checkpoint();
 }
 if (nodes.size < Math.min(1500, TARGET)) throw new Error(`Atlas too small: ${nodes.size} nodes; resume from cached successful requests.`);
+await checkpoint(true);
 console.log(`Atlas ready: ${nodes.size} real articles. ${OUTPUT}`);

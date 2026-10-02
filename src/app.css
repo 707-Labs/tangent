@@ -1570,6 +1570,14 @@ body::before {
 	max-height: min(32dvh, 18rem);
 	object-fit: contain;
 }
+/* Two-pane reading: the article's feed card beside the reader already shows this picture.
+   ArticleReader marks a lead figure that repeats it; the full-screen phone reader keeps it.
+   64rem is Tailwind's lg breakpoint, where the feed page splits into two panes. */
+@media (width >= 64rem) {
+	.wiki-content figure.infobox-lead.wh-feed-duplicate {
+		display: none;
+	}
+}
 .wiki-content figcaption {
 	margin-top: 0.5rem;
 	line-height: 1.5;

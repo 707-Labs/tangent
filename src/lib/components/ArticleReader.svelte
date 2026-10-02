@@ -8,12 +8,16 @@
 	import { X } from '@lucide/svelte';
 	import { headingAnchor, citationNoteId, sourceDestination, type ContentsEntry } from '$lib/reader/navigation';
 	import { loadReadingPosition, saveReadingPosition, readingStorage, nearestReadingAnchor, type ReadingPosition } from '$lib/reader/position';
+	import { imageIdentity } from '$lib/feed/images';
 
 	let {
-		onDive
+		onDive,
+		feedImage = null
 	}: {
 		/** Dive into an in-article link: closes the reader and drops it as a fresh feed card. */
 		onDive: (title: string) => void;
+		/** Image source this article's feed card is showing beside the two-pane reader. */
+		feedImage?: string | null;
 	} = $props();
 
 	let asideEl = $state<HTMLElement | null>(null);
@@ -360,6 +364,21 @@
 					(p.textContent?.trim().length ?? 0) > 140
 			);
 			lead?.classList.add('wh-lead');
+		});
+	});
+
+	// In the two-pane layout (lg+) the article's feed card sits beside the reader. When the
+	// lead figure repeats the picture that card is showing, mark it and app.css hides it at
+	// that width; phones and callers without a feed image (the graph) keep it. Only the
+	// rendered DOM is marked, never the fetched HTML.
+	$effect(() => {
+		articleHtml;
+		const shown = feedImage ? imageIdentity(feedImage) : null;
+		if (!contentEl) return;
+		tick().then(() => {
+			const figure = contentEl?.querySelector('figure.infobox-lead');
+			const source = figure?.querySelector('img')?.getAttribute('src');
+			figure?.classList.toggle('wh-feed-duplicate', Boolean(shown && source && imageIdentity(source) === shown));
 		});
 	});
 

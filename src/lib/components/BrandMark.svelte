@@ -1,5 +1,12 @@
 <script lang="ts">
-	let { size = 24 }: { size?: number } = $props();
+	let {
+		size = 24,
+		wordmarkClass = 'hidden min-[23rem]:inline'
+	}: {
+		size?: number;
+		/** Visibility classes for the "tangent" wordmark beside the mark. */
+		wordmarkClass?: string;
+	} = $props();
 </script>
 
 <!--
@@ -32,5 +39,5 @@
 		/>
 		<ellipse cx="12.0061" cy="2.1118" rx="2.148" ry="2.1118" fill="var(--color-accent)" />
 	</svg>
-	<span class="hidden text-ink min-[23rem]:inline">tangent</span>
+	<span class="text-ink {wordmarkClass}">tangent</span>
 </span>
