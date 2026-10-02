@@ -1,5 +1,6 @@
 import type { Handle } from '@sveltejs/kit';
 import { SESSION_COOKIE, validateSessionToken } from '$lib/server/auth/session';
+import { shareMetaFiller } from '$lib/share/meta';
 
 /**
  * Resolve the session on every request and hang the account off `event.locals.user`.
@@ -8,6 +9,9 @@ import { SESSION_COOKIE, validateSessionToken } from '$lib/server/auth/session';
  *
  * Routes that need auth read `locals.user`; we never throw here — an unauthenticated
  * request just gets `user: null` and proceeds (the feed works signed-out).
+ *
+ * HTML responses also get their share metadata here: app.html's `%tangent.share.*%`
+ * placeholders are filled from the URL, including for client-rendered pages (/graph).
  */
 export const handle: Handle = async ({ event, resolve }) => {
 	const db = event.platform?.env?.DB;
@@ -23,5 +27,5 @@ export const handle: Handle = async ({ event, resolve }) => {
 		}
 	}
 
-	return resolve(event);
+	return resolve(event, { transformPageChunk: shareMetaFiller(event.url) });
 };

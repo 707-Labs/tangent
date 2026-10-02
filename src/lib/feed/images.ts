@@ -1,7 +1,8 @@
 import type { FeedCard } from './types';
 import type { Thumbnail } from '$lib/wikipedia/types';
 
-const WIKIMEDIA_HOSTS = new Set(['upload.wikimedia.org', 'thumb.wikimedia.org']);
+/** Hosts that serve Wikimedia originals and thumbnails; also the share-card image allowlist. */
+export const WIKIMEDIA_HOSTS: ReadonlySet<string> = new Set(['upload.wikimedia.org', 'thumb.wikimedia.org']);
 const TRACKING_PARAMS = new Set(['utm_source', 'utm_campaign', 'utm_content']);
 
 /** Presentation identity, not an image URL rewrite. Unknown sources exact-match. */

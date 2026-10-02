@@ -34,6 +34,7 @@
     "@fontsource/newsreader": "^5.2.10",
     "@lucide/svelte": "^1.18.0",
     "@simplewebauthn/browser": "^13.3.0",
-    "@simplewebauthn/server": "^13.3.1"
+    "@simplewebauthn/server": "^13.3.1",
+    "@takumi-rs/wasm": "^2.14.0"
   }
 }
