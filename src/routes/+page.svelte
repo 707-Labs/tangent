@@ -7,7 +7,6 @@
 	import { page } from '$app/state';
 	import { feed } from '$lib/feed/feedState.svelte';
 	import { reader } from '$lib/reader/readerState.svelte';
-	import { trailPanel } from '$lib/feed/trailPanel.svelte';
 	import { loadTrail, saveTrail } from '$lib/feed/trail';
 	import type { FeedCard } from '$lib/feed/types';
 	import { randomSeed } from '$lib/seeds';
@@ -15,7 +14,7 @@
 	import TangentDivider from '$lib/components/TangentDivider.svelte';
 	import FootLine from '$lib/components/FootLine.svelte';
 	import ArticleReader from '$lib/components/ArticleReader.svelte';
-	import TrailPanel from '$lib/components/TrailPanel.svelte';
+	import { provideCardJump } from '$lib/components/TrailHistory.svelte';
 	import SkeletonCard from '$lib/components/SkeletonCard.svelte';
 	import ActionHint from '$lib/components/ActionHint.svelte';
 
@@ -124,7 +123,9 @@
 			} catch { /* Best effort. */ }
 		};
 		window.addEventListener('pagehide', persist);
-		return () => { clearTimeout(initializeHistory); persist(); window.removeEventListener('pagehide', persist); reader.onChange = null; };
+		// History (Account drawer) jumps within this live feed while it is mounted.
+		const releaseCardJump = provideCardJump((id) => void handleTrailSelect(id));
+		return () => { clearTimeout(initializeHistory); persist(); window.removeEventListener('pagehide', persist); reader.onChange = null; releaseCardJump(); };
 	});
 	$effect(() => {
 		const state = page.state.tangent;
@@ -316,7 +317,6 @@
 
 	async function handleTrailSelect(id: string) {
 		navigationError = null;
-		trailPanel.close();
 		if (await feed.ensureCard(id)) { navigateCard(id); await goToCard(id); }
 		else navigationError = 'This article could not be loaded. Please try again.';
 	}
@@ -349,14 +349,6 @@
 <svelte:head>
 	<title>{feed.displayTitle ? `${feed.displayTitle} · Tangent` : 'Tangent'}</title>
 </svelte:head>
-
-{#if trailPanel.isOpen}
-	<TrailPanel
-		trail={feed.trail.filter((n) => n.seen)}
-		onClose={() => trailPanel.close()}
-		onSelect={handleTrailSelect}
-	/>
-{/if}
 
 {#if navigationError}<p role="alert" class="mb-4 text-sm text-danger">{navigationError}</p>{/if}
 

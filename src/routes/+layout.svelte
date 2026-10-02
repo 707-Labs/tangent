@@ -17,11 +17,9 @@
 	import BrandMark from '$lib/components/BrandMark.svelte';
 	import ProfilePanel from '$lib/components/ProfilePanel.svelte';
 	import AccountPanel from '$lib/components/AccountPanel.svelte';
-	import { Route, SlidersHorizontal, Plus, Waypoints, Star } from '@lucide/svelte';
+	import { SlidersHorizontal, Plus, Waypoints, Star } from '@lucide/svelte';
 	import { profile } from '$lib/engagement/profile.svelte';
 	import { reader } from '$lib/reader/readerState.svelte';
-	import { feed } from '$lib/feed/feedState.svelte';
-	import { trailPanel } from '$lib/feed/trailPanel.svelte';
 	import { auth } from '$lib/auth/authState.svelte';
 	import { syncOnInit, mergeOnLogin, pushProfile } from '$lib/auth/sync';
 	import { theme } from '$lib/theme/theme.svelte';
@@ -64,12 +62,6 @@
 		const id = setTimeout(() => void pushProfile(), 1500);
 		return () => clearTimeout(id);
 	});
-
-	// Trail = articles you've actually reached (scrolled to / dwelled on). Shown in the
-	// header once there's more than just the seed, so it's reachable without a floating chip.
-	// Only on the feed route — that's where the panel itself is rendered.
-	const seenCount = $derived(feed.trail.filter((n) => n.seen).length);
-	const showTrail = $derived(page.url.pathname === '/' && seenCount > 1);
 
 	let profileOpen = $state(false);
 	let accountOpen = $state(false);
@@ -127,34 +119,11 @@
 						{page.url.pathname === '/graph' ? 'text-ink' : 'text-muted'}"
 				>
 					<!-- Nodes joined by edges — the knowledge-graph glyph, same geometric
-					     vocabulary as the trail's waypoints route. -->
+					     vocabulary as the relation icons. -->
 					<Waypoints class="size-5" aria-hidden="true" />
 				</a>
 
-					<button type="button" onclick={() => savedArticles.open()} aria-label="Saved articles" title="Saved articles" class="flex size-11 shrink-0 items-center justify-center rounded-full text-muted hover:bg-surface-2 hover:text-ink"><Star class="size-5" aria-hidden="true" /></button>
-				<!-- Trail: opens the panel of articles you've actually reached. Hidden until
-				     you're past the seed; a subtle count badge stands in for the old chip. -->
-				{#if showTrail}
-					<button
-						type="button"
-						onclick={() => trailPanel.toggle()}
-						aria-label="Your trail, {seenCount} articles"
-						title="Your reading trail"
-						aria-haspopup="dialog"
-						class="icon-btn inline-flex items-center gap-1 rounded-full p-1.5
-							text-muted transition-colors hover:bg-surface-2 hover:text-ink"
-					>
-						<!-- Trail: a winding route between waypoints — the path you've walked.
-						     Count sits beside the glyph as its own pill (Ben's Figma nav),
-						     not overlaid on it. -->
-						<Route class="size-5" aria-hidden="true" />
-						<span
-							class="rounded-full border border-hair bg-surface px-1.5 py-0.5 text-[11px]
-								font-semibold leading-none text-muted"
-							aria-hidden="true">{seenCount}</span
-						>
-					</button>
-				{/if}
+				<button type="button" onclick={() => savedArticles.open()} aria-label="Saved articles" title="Saved articles" class="flex size-11 shrink-0 items-center justify-center rounded-full text-muted hover:bg-surface-2 hover:text-ink"><Star class="size-5" aria-hidden="true" /></button>
 
 				<button
 					type="button"

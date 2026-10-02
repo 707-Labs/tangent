@@ -118,10 +118,12 @@ Adding a theme = one entry in `themes.ts` + one `:root[data-theme='…']` block 
 Layout defined in `src/routes/+layout.svelte`.
 
 **Navigation pattern:** sticky **top bar** (full-bleed border, inner row constrained to the
-reading column). Header holds the BrandMark (home), Saved, a Trail toggle (appears once you're past the
-seed), a visible Sign in/Account action, Settings, and a "New tangent" CTA. The graph shortcut
-appears on wider screens and remains available in Settings on phones. A footer carries Wikipedia
-attribution (CC BY-SA 4.0) + About / Terms / Source links.
+reading column). Header holds the BrandMark (home), Saved, a visible Sign in/Account action,
+Settings, and a "New tangent" CTA. The graph shortcut appears on wider screens and remains
+available in Settings on phones. The Account drawer also holds **History**: the articles you've
+reached in the current tangent. It is device-local, so it shows whether or not you're signed in.
+Choosing an entry scrolls the feed back to that card, or, from another page, returns to the feed
+at that card. A footer carries Wikipedia attribution (CC BY-SA 4.0) + About / Terms / Source links.
 
 **Shell width:** content is a narrow reading column (`max-w-2xl`). Opening the article reader
 morphs the shell into a two-pane split (`lg:max-w-7xl`) via a one-shot `transition-[max-width]`
@@ -131,7 +133,7 @@ morphs the shell into a two-pane split (`lg:max-w-7xl`) via a one-shot `transiti
 
 | Route | Description |
 |---|---|
-| `/` | The infinite feed: read connected previews, choose an Explore destination, save articles, or give explicit feedback; open the reader and trail. Browser history preserves article and feed position. |
+| `/` | The infinite feed: read connected previews, choose an Explore destination, save articles, or give explicit feedback; open the reader. History (Account drawer) returns to any card you've reached. Browser history preserves article and feed position. |
 | `/start` | New tangent: search Wikipedia or pick from "Today on Wikipedia" (featured / DYK / on this day / news / trending) to seed a fresh feed. Recent tangents have explicit Resume links. |
 | `/graph` | A full-window constellation of real articles in seven topic regions, laid out from their links. A static snapshot supplies articles, previews, connections and positions. The overview names the regions; zooming in names more articles. Each name shows across a fixed zoom range, so panning never changes which names show. Selecting a bundled article shows its preview and known links immediately. Search also imports articles beyond the atlas. Focused connections keep exploration readable; dotted paths show visits. Drag, wheel, trackpad, pinch, keyboard and zoom controls navigate the canvas. Read in place or start a feed from the selection. Without `?seed=`, it resumes the feed's chain tip when available. |
 | `/about` | Static page — what Tangent is, where content comes from, licensing and privacy. |
@@ -154,7 +156,7 @@ descriptive accessible names and 44 px touch targets.
 Reader Contents jumps to real headings; citation previews keep source access near
 the passage. Reading positions restore with open Sources and Quick facts. Feed
 history stores a visible waypoint and offset to survive the reader's width change.
-Saved articles, recent tangents, map visits, and reading positions are device-local.
+Saved articles, recent tangents, History, map visits, and reading positions are device-local.
 
 The map uses the whole viewport below the app header. Desktop selections sit beside
 the canvas; phones use a bottom panel. The opening view fits the whole map below the
@@ -180,9 +182,9 @@ while open on a phone and stays within the viewport at every scroll position.
 Components live in `src/lib/components/` (flat, no domain subdirs). Grouped by role:
 
 - **Feed & reading** — `ArticleCard` (centered media, a five-line preview, compact Read / Explore actions and a save star; joins the trail on first view), `ExplorePanel` (three named destinations), `SavedPanel` (retrievable saved articles), `ArticleReader` (full article, Contents, Quick facts, citation previews and Sources; desktop pane follows measured header height), `SkeletonCard` (feed-card loading placeholder), `ActionHint` (one-time explanation of reading, exploring, and saving), `LinkPreview` (hover peek of an in-article link — pointer-fine only, inert on touch).
-- **Trail & connections** — `TrailPanel` (the trail of articles you've actually reached; jump back to waypoints), `ConnectionBreadcrumb` ("came from" link back to a card's source), `RelationIcon` (geometric icon for a connection's relation type — the shared node/edge/point vocabulary).
+- **Trail & connections** — `TrailHistory` (History in the Account drawer: the articles you've actually reached; jump back to waypoints), `ConnectionBreadcrumb` ("came from" link back to a card's source), `RelationIcon` (geometric icon for a connection's relation type — the shared node/edge/point vocabulary).
 - **Brand & chrome** — `BrandMark` (wordmark + tangent-line logo with the lone ember dot at the touch-point), `Drawer` (accessible native `<dialog>` slide-in panel primitive; focus-restoring close).
-- **Settings & account** — `ProfilePanel` (Settings drawer: compact account shortcut, appearance, feed flavor, learned interests), `AccountPanel` (dedicated sign-in/account drawer), `AccountSection` (shared account forms), `ThemePicker` (four compact appearance choices).
+- **Settings & account** — `ProfilePanel` (Settings drawer: compact account shortcut, appearance, feed flavor, learned interests), `AccountPanel` (dedicated sign-in/account drawer, with History below), `AccountSection` (shared account forms), `ThemePicker` (four compact appearance choices).
 
 ---
 
