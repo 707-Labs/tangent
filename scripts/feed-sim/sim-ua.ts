@@ -6,4 +6,4 @@
  * run wears production's User-Agent — and Wikimedia throttles per-UA, so a
  * bare 660-journey run took prod's /api/links down on 2026-07-19. Never again.
  */
-process.env.TANGENT_UA ??= 'Tangent-sim/0.1 (contact@example.com)';
+process.env.TANGENT_UA ??= 'Tangent-sim/0.1 (wikipedia@tangent.page)';
