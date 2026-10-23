@@ -9,7 +9,7 @@
  * exactly those.
  *
  * Resumable: progress persists to categories-cache.json; re-run to continue.
- * Run: TANGENT_UA="Tangent-sim/0.1 (tannervass@gmail.com)" bun run enrich-categories.ts
+ * Run: TANGENT_UA="Tangent-sim/0.1 (contact@example.com)" bun run enrich-categories.ts
  */
 
 import './sim-ua.ts'; // MUST be first: stamps the sim User-Agent before the client loads
