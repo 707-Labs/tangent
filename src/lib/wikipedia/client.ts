@@ -13,7 +13,7 @@ const ACTION_BASE = 'https://en.wikipedia.org/w/api.php';
 // The guard keeps Workers happy (`process` doesn't exist there; the default applies).
 // Exported for direct Wikimedia fetches outside these helpers (e.g. share-card images).
 export const USER_AGENT =
-	globalThis.process?.env?.TANGENT_UA ?? 'Tangent/0.1 (https://tangent.page; tannervass@gmail.com)';
+	globalThis.process?.env?.TANGENT_UA ?? 'Tangent/0.1 (https://tangent.page; wikipedia@tangent.page)';
 
 const HEADERS = {
 	'User-Agent': USER_AGENT,

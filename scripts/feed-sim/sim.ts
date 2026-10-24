@@ -113,7 +113,7 @@ async function seedDescription(title: string): Promise<string | null> {
 	try {
 		const res = await fetch(
 			`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/ /g, '_'))}`,
-			{ headers: { 'User-Agent': 'Tangent-sim/0.1 (tannervass@gmail.com)' } }
+			{ headers: { 'User-Agent': 'Tangent-sim/0.1 (wikipedia@tangent.page)' } }
 		);
 		const data = res.ok ? ((await res.json()) as { description?: string }) : {};
 		seedDescCache[title] = data.description ?? null;
