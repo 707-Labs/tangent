@@ -13,7 +13,8 @@
 
 	const label = $derived(
 		{
-			seed: 'You started here',
+			// Neutral on purpose: on a first visit the app picks this article, not the reader.
+			seed: 'Starting point',
 			link: 'Linked from',
 			related: 'Related to',
 			surprise: 'Tangent from',

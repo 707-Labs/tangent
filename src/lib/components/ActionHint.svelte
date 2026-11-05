@@ -10,7 +10,7 @@
 </script>
 
 {#if actionHint.visible}
-	<!-- One-time orientation for the feed actions, dismissed on first interaction. -->
+	<!-- One-time orientation for the feed idea and its actions, dismissed on first interaction. -->
 	<div
 		class="animate-rise relative rounded-[var(--radius-card)] border border-hair bg-surface/70 px-4 py-3
 			pr-14 text-sm"
@@ -25,7 +25,8 @@
 			<X class="size-4" aria-hidden="true" />
 		</button>
 
-		<p class="mb-2 font-display font-medium text-ink">Ways to explore</p>
+		<p class="font-display font-medium text-ink">Every card follows from the one before.</p>
+		<p class="mb-2 text-muted">Scroll to follow the trail wherever it goes.</p>
 		<ul class="space-y-1.5 text-muted">
 			<li class="flex items-start gap-2">
 				<BookOpen class="mt-0.5 size-4 shrink-0 text-faint" aria-hidden="true" />
@@ -33,7 +34,7 @@
 			</li>
 			<li class="flex items-start gap-2">
 				<Star class="mt-0.5 size-4 shrink-0 text-faint" aria-hidden="true" />
-				<span>Star an article to save it.</span>
+				<span>Star an article to save it for later.</span>
 			</li>
 			<li class="flex items-start gap-2">
 				<ArrowRight class="mt-0.5 size-4 shrink-0 text-faint" aria-hidden="true" />
