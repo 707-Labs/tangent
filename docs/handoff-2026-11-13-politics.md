@@ -126,3 +126,33 @@ cd ../politics-eval && bun run compare-arms.ts regex2 v2 politics-cache.v2.json
   tokens × $0.038 per million). It is capped at $4.00 by the proxy.
 - The true total is the sum of `tokens` in `calls.jsonl` × $0.038 per million, plus the
   first round.
+
+## Simulation result, round 2 (finished 2026-11-13, after the note above was written)
+
+Word rules only vs option 1 with prompt v2. 660 paired journeys per arm. ± is the 95% CI
+of the paired difference.
+
+| measure | word rules | option 1 + v2 | paired diff |
+|---|---|---|---|
+| history reader, control, on-interest | 64.2% | 62.7% | −1.5 pp ± 3.0 (n=60) |
+| history reader, adaptive, on-interest | 60.4% | 59.8% | −0.6 pp ± 3.6 (n=60) |
+| all personas, on-interest | 24.2% | 24.1% | −0.0 pp ± 0.7 (n=600) |
+| tangent share of served cards | 20.9% | 20.7% | −0.2 pp ± 0.5 |
+| served cards v2 calls political (circular measure) | 1.08% | 0.23% | −0.85 pp ± 0.20 |
+| journeys reaching any cluster page | 6/660 (Wilson 0.4–2.0%) | 7/660 (0.5–2.2%) | none detected |
+| journeys reaching the core cluster | 0/660 | 0/660 | none |
+
+- **The history loss is gone within this run's resolution.** The interval includes zero.
+  Round 1 (v1) was −9.3 ± 5.0.
+- v2 also no longer cuts tangents (round 1: −1.9 ± 0.8).
+- What v2 removes is small: about 0.85% of served cards, as judged by v2 itself.
+- **Model calls:** 8,125 through the proxy. 4 failed outright. 212 (2.6%) took over
+  800 ms, measured Mac → `wrangler dev`, not production. p50 325 ms, p95 666 ms.
+- The sim reported 138 regex fallbacks out of 7,990 pools flagged.
+- **Spend this round:** $1.58 by the proxy's token log (eval included). Round 1 was
+  about $0.15. Not checked against Cloudflare billing.
+- The relay and proxy are stopped, and `feed-sim-regex` is deleted.
+- **Left to do:**
+  - Tanner confirms or changes the definition.
+  - Independent review.
+  - Copy these numbers into the PR body (done in the PR note).
