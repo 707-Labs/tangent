@@ -28,7 +28,7 @@ import { categoryTokenSet, tokenize } from '../../src/lib/feed/tokens.ts';
 import { eraBuckets, placeTokens, type TangentDirection } from '../../src/lib/feed/directions.ts';
 import { tasteAffinity, intrigue, type TasteId } from '../../src/lib/feed/taste.ts';
 import { isPoliticalCandidate } from '../../src/lib/feed/politics.ts';
-import { classifyPolitics, applyPoliticsFlags } from '../../src/lib/server/politicsModel.ts';
+import { classifyPolitics, applyPoliticsFlags, POLITICS_PROMPT_VERSION } from '../../src/lib/server/politicsModel.ts';
 import { FEED } from '../../src/lib/feed/config.ts';
 import type { Candidate } from '../../src/lib/wikipedia/types.ts';
 import { writeFileSync, readFileSync, existsSync } from 'node:fs';
@@ -109,9 +109,10 @@ function flushCache() {
 
 // Model arm: SIM_POLITICS_URL points at a Worker that forwards the request body to
 // env.AI.run (Clef) and answers { out }. Unset = regex arm (the production fallback).
-// Flags are memoized per tip in politics-cache.json, mirroring the server's per-pool cache.
+// Flags are memoized per tip in politics-cache.<prompt version>.json, mirroring the server's
+// per-pool cache, so a prompt change never reuses another prompt's flags.
 const POLITICS_URL = process.env.SIM_POLITICS_URL;
-const POLITICS_CACHE_PATH = `${import.meta.dir}/politics-cache.json`;
+const POLITICS_CACHE_PATH = `${import.meta.dir}/politics-cache.${POLITICS_PROMPT_VERSION}.json`;
 const politicsCache: Record<string, Record<string, boolean>> =
 	POLITICS_URL && existsSync(POLITICS_CACHE_PATH) ? JSON.parse(readFileSync(POLITICS_CACHE_PATH, 'utf8')) : {};
 let politicsFallbacks = 0;
