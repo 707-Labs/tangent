@@ -78,6 +78,39 @@ grid: 660 journeys, 18,379 consecutive transitions; details in the feed-sim READ
     still uses no model. The only reason on record is his words above. Code:
     `isPoliticalCandidate` in `src/lib/feed/politics.ts` and
     `src/lib/server/politicsModel.ts`.
+  - **Changed 2026-11-13, Tanner's decision ("B"): the model is asked about current
+    politics only.** The first prompt also flagged history, for example
+    "Roman Empire" in 177 of 250 candidate pools in feed-sim. Tanner chose to narrow
+    the model to current politics and test again. He did not define the line. The
+    definition below is an **agent proposal for Tanner to confirm**:
+    - **Political (model says yes):** the article is mainly about politics that is
+      live today: living politicians and officeholders (including former ones still
+      alive), parties and political movements that exist now, elections and
+      referendums, current governments, legislatures and political institutions,
+      active political controversies, and ongoing wars and conflicts treated as
+      political topics.
+    - **Not political (model says no):** history as such: empires, historical
+      states and dynasties, wars and conflicts that have ended, rulers and
+      politicians who have died, past treaties, constitutions as documents, and
+      political philosophy as a historical subject. Also countries, places,
+      languages, science and culture.
+    - The word rules still apply under option 1, so a dead dictator or a world-war
+      page is still dampened through the regex even when the model says no.
+    - Borderline examples (proposal):
+
+      | Article | Side | Why |
+      |---|---|---|
+      | Roman Empire | not political | historical state |
+      | Cold War | not political | ended in 1991; history |
+      | Napoleon | not political | ruler of the past |
+      | Boris Yeltsin (1990s head of state, died 2007) | not political | dead politician |
+      | Bill Clinton (living former president) | political | living politician |
+      | European Union | political | current political institution |
+      | Russo-Ukrainian war (ongoing) | political | ongoing conflict |
+      | History of the Democratic Party (United States) | political | the party is active today |
+      | Constitution of the United States | not political | a document; only current fights over it are political |
+      | Joseph Stalin (dead dictator) | not political for the model | dead ruler; the word rules still flag him when his description or categories match a stem such as "dictator" or "totalitarian" |
+
 - Attractor safety does not regress: run breaks are unconditional, so coherence
   cannot create an inescapable orbit; the WWII-cluster landing rate stays at or
   below the current sim baseline (1.7%).

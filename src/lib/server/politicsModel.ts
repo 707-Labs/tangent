@@ -34,7 +34,7 @@ export interface AiRunner {
 
 export const POLITICS_MODEL = '@cf/cloudflare/clef-flash';
 /** Bump when the prompt or threshold changes, so cached flags from the old prompt expire. */
-export const POLITICS_PROMPT_VERSION = 'v1';
+export const POLITICS_PROMPT_VERSION = 'v2';
 /** Workers AI allows 1 to 64 questions per call. Pools above this are split into parallel calls. */
 const MAX_QUESTIONS = 64;
 const THRESHOLD = 0.5;
@@ -42,11 +42,22 @@ const THRESHOLD = 0.5;
 export const POLITICS_TIMEOUT_MS = 800;
 const MAX_CATEGORIES = 8;
 
+/**
+ * Current politics only (Tanner's decision "B", 2026-11-13; the line itself is an agent
+ * proposal written down in docs/specs/2026-07-16-run-based-feed-design.md). History is
+ * left to the word rules in `$lib/feed/politics`, which still apply under the OR rule.
+ */
 const RULE =
-	'mainly about politics or government (elections, parties, legislatures, government bodies, ' +
-	'politicians and heads of state as political figures, political ideologies, diplomacy and treaties), ' +
-	'or about the Nazi / fascist / Soviet / totalitarian-regime cluster (dictators, the Holocaust, ' +
-	'genocides, the world wars as a whole)';
+	'mainly about politics that is live today: living politicians and officeholders (including ' +
+	'former ones who are still alive), political parties and political movements that exist now, ' +
+	'elections and referendums, current governments, legislatures and political institutions, ' +
+	'active political controversies, and ongoing wars and conflicts';
+
+const NOT_POLITICAL =
+	'History as such is NOT political: empires, historical states and dynasties, wars and conflicts ' +
+	'that have ended, rulers and politicians who have died, past treaties, constitutions as documents, ' +
+	'and political philosophy as a historical subject. Countries, places, languages, religion, science ' +
+	'and culture are not political either.';
 
 function line(c: Candidate, i: number): string {
 	const cats = (c.categories ?? [])
@@ -59,8 +70,7 @@ function line(c: Candidate, i: number): string {
 /** The Clef request for one chunk of at most {@link MAX_QUESTIONS} candidates. */
 export function politicsRequest(chunk: Candidate[]) {
 	const state =
-		`Rule: an article is POLITICAL if it is ${RULE}. Individual battles, military officers, ` +
-		`places, countries, languages, and science are not political.\nCandidate articles:\n` +
+		`Rule: an article is POLITICAL if it is ${RULE}. ${NOT_POLITICAL}\nCandidate articles:\n` +
 		chunk.map(line).join('\n');
 	const questions: Record<string, { type: 'noul'; instructions: string }> = {};
 	chunk.forEach((c, i) => {
