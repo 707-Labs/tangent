@@ -32,7 +32,7 @@ review is owed before merge.
   so cached v1 flags expire. Option 1 and the failure behaviour are unchanged: on a
   timeout (800 ms) or an error, the word rules alone decide.
 - **feed-sim:** caches model flags per prompt version (`politics-cache.<version>.json`).
-- **Labelled set:** `scripts/politics-eval/`, 180 articles from 28 real pools.
+- **Labelled set:** `scripts/politics-eval/`, 180 articles from 30 real pools (an earlier commit message says 28; the two contemporary pools were left out of that count).
   - Strata: history 48, politics-heavy 60, random 60, contemporary 12. Sampled with a
     fixed seed (`sample.ts`).
   - Labeller A (this session) labelled first (`labels-a.tsv`). Labeller B, a separate
@@ -104,6 +104,36 @@ needs the untracked feed-sim result and cache files.
   - Model flags in their own cache store.
 - **Start page:** if the model fails, the word-rules-only page is cached for 10 minutes,
   not a day, and `politics_fallback` is recorded.
+
+## After the re-review (2026-11-13)
+
+- **v3 evaluated** on the labelled set (`bun run eval.ts`): 60 direct model calls, $0.015.
+  Guards were bypassed, and each pool's model-only share is stored separately.
+
+  | classifier (n=180, 17 positive) | precision | recall |
+  |---|---|---|
+  | v2 model alone (run 1 / run 2) | 0.484 / 0.484 | 0.882 / 0.882 |
+  | v3 model alone (run 1 / run 2) | 0.516 / 0.485 | 0.941 / 0.941 |
+  | option 1 with v2 | 0.294 | 0.882 |
+  | option 1 with v3 | 0.302 | 0.941 |
+
+  - Run-to-run flips: v3 2 of 180, v2 6 of 180.
+  - Highest share of a pool flagged by v3 but not by the word rules: 0.261 (30 pools), so
+    the 50% guard rejected none.
+  - On the 14 of those pools that also have v2 flags, v3 flags no more than v2 (max 0.143
+    vs 0.163).
+  - The difference between v2 and v3 is one or two items out of 17 positives, which is
+    within noise.
+- **Start page:** each shelf repeats the 50% share test on its own candidates, so the
+  model alone can never remove the single featured article. The word rules still can.
+- **Escaping:** U+2028 and U+2029 are escaped in the quoted fields, as `<` is.
+- **Breaker:**
+  - After the cool-down, a single trial request goes through, and only its success
+    closes the breaker.
+  - At most 8 pools are classified at once per isolate; the rest use the word rules.
+  - Burst bound: at most 13 pool classifications (8 in flight + 5 failures) before the
+    breaker opens, then one per 5-minute cool-down. Each classification is one call per
+    64 candidates.
 
 ## Not done
 
