@@ -7,9 +7,10 @@ const { fetchRelated, fetchExploreCandidates, selectNext } = vi.hoisted(() => ({
 vi.mock('../src/lib/wikipedia/action', () => ({ fetchRelated, fetchExploreCandidates }));
 vi.mock('../src/lib/feed/select', () => ({ selectNext }));
 vi.mock('../src/lib/server/resolveCard', () => ({ resolveCard: vi.fn() }));
-vi.mock('../src/lib/server/cache', () => ({
-	TTL: { long: 1000 }, cached: (_key: string, _ttl: number, acquire: () => Promise<unknown>) => acquire()
-}));
+vi.mock('../src/lib/server/cache', () => {
+	const cached = (_key: string, _ttl: number, acquire: () => Promise<unknown>) => acquire();
+	return { TTL: { long: 1000 }, cached, createCache: () => ({ cached, cacheDelete: () => {} }) };
+});
 import { POST } from '../src/routes/api/next/+server';
 
 async function scoreRequest(mode?: 'related', noSurprise?: boolean): Promise<EngineContext> {
