@@ -67,6 +67,17 @@ grid: 660 journeys, 18,379 consecutive transitions; details in the feed-sim READ
   boundaries, not mid-flow, and every session is guaranteed one early.
 - No new infrastructure: no embeddings, no LLM, no new fetches. Category overlap
   over already-fetched data is the relatedness signal.
+  - **Changed 2026-11-13 — Tanner's decision.** His words: "tangent option 1 and
+    no LLM rule may change." This lifts the "no LLM" rule above for one purpose,
+    the politics check. Option 1: a candidate counts as political when a Workers
+    AI model (Clef, `@cf/cloudflare/clef-flash`, one batched call per candidate
+    pool) flags it OR the old stem regex matches it. The model can add a flag; it
+    never clears a regex match. When the model call fails or times out, the regex
+    alone decides, exactly as before. The call is also a new per-hop request, so
+    "no new fetches" no longer holds for that check. The run/coherence engine
+    still uses no model. The only reason on record is his words above. Code:
+    `isPoliticalCandidate` in `src/lib/feed/politics.ts` and
+    `src/lib/server/politicsModel.ts`.
 - Attractor safety does not regress: run breaks are unconditional, so coherence
   cannot create an inescapable orbit; the WWII-cluster landing rate stays at or
   below the current sim baseline (1.7%).
