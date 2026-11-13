@@ -14,11 +14,11 @@ function sample(seeds: readonly Seed[], count: number): Seed[] {
 	return pool.slice(0, count);
 }
 
-export const load: PageServerLoad = () => {
+export const load: PageServerLoad = ({ platform }) => {
 	return {
 		// Intentionally not awaited — SvelteKit streams it so the shell paints immediately
 		// and the shelves fill in as Wikipedia responds (server-cached per UTC day).
-		today: todayFeed(),
+		today: todayFeed(platform),
 		seeds: sample(SEEDS, CHIP_COUNT)
 	};
 };

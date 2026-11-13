@@ -51,3 +51,24 @@ describe('explicit related API steering', () => {
 		expect((await scoreRequest(undefined, true)).noSurprise).toBe(true);
 	});
 });
+
+describe('politics flags on the server-picked pool', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		selectNext.mockReturnValue(null);
+	});
+
+	it('hands selectNext candidates flagged by one Workers AI call', async () => {
+		fetchExploreCandidates.mockResolvedValue([
+			{ title: 'Belovezha Accords', description: null, thumbnail: null, isDisambiguation: false,
+				relation: 'link', categories: [], position: 0 }
+		]);
+		const run = vi.fn(async () => ({ answers: { c0: { type: 'noul', noul: 0.9 } } }));
+		const body: NextRequest = { fromTitle: 'Coffee', session: { seenTitles: [] },
+			interest: { tokenWeights: {}, tokenDocFreq: {} } };
+		await POST({ request: new Request('http://localhost/api/next', { method: 'POST', body: JSON.stringify(body) }),
+			setHeaders: vi.fn(), platform: { env: { AI: { run } } } } as unknown as Parameters<typeof POST>[0]);
+		expect(run).toHaveBeenCalledTimes(1);
+		expect(selectNext.mock.calls[0][0][0].political).toBe(true);
+	});
+});

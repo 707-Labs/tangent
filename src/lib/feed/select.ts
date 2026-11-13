@@ -3,8 +3,8 @@ import type { EngineContext, Selection } from './types';
 import { FEED } from './config';
 import { classifyDirection, type TangentDirection } from './directions';
 import { categoryAffinity, coherence, runVariety, scoreCandidate } from './score';
-import { isPolitical } from './politics';
-import { candidateText, intrigue } from './taste';
+import { isPoliticalCandidate } from './politics';
+import { intrigue } from './taste';
 
 type Scored = { candidate: Candidate; score: number };
 type Ranked = Scored & { selectionScore: number };
@@ -71,7 +71,7 @@ function tangentGated(breakScored: Ranked[]): Ranked[] {
 		.map((s) => ({ s, hook: intrigue(s.candidate) }))
 		.filter(
 			({ s, hook }) =>
-				hook >= FEED.surpriseIntrigueFloor && !isPolitical(candidateText(s.candidate))
+				hook >= FEED.surpriseIntrigueFloor && !isPoliticalCandidate(s.candidate)
 		)
 		.map(({ s, hook }) => ({
 			...s,
@@ -131,7 +131,7 @@ function footCandidate(scored: Scored[], pickedTitle: string): Candidate | undef
 		if (s.candidate.title === pickedTitle) continue;
 		const hook = intrigue(s.candidate);
 		if (hook < FEED.surpriseIntrigueFloor) continue;
-		if (isPolitical(candidateText(s.candidate))) continue;
+		if (isPoliticalCandidate(s.candidate)) continue;
 		if (!best || hook > best.hook) best = { candidate: s.candidate, hook };
 	}
 	return best?.candidate;

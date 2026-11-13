@@ -2,12 +2,13 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { fetchExploreCandidates, fetchRelated } from '$lib/wikipedia/action';
 import { cacheDelete, cached, TTL } from '$lib/server/cache';
+import { withPoliticsFlags } from '$lib/server/politicsModel';
 
 /**
  * GET /api/links?from=Title          -> in-order lead-section links (explore feed)
  * GET /api/links?from=Title&mode=related -> related-only ("More like this")
  */
-export const GET: RequestHandler = async ({ url, setHeaders }) => {
+export const GET: RequestHandler = async ({ url, setHeaders, platform }) => {
 	const from = url.searchParams.get('from')?.trim();
 	if (!from) return json({ candidates: [], error: 'missing from' }, { status: 400 });
 
@@ -30,7 +31,7 @@ export const GET: RequestHandler = async ({ url, setHeaders }) => {
 			return json({ candidates });
 		}
 		setHeaders({ 'cache-control': 'public, max-age=3600' });
-		return json({ candidates });
+		return json({ candidates: await withPoliticsFlags(key, candidates, platform) });
 	} catch {
 		return json({ candidates: [], error: 'upstream error' }, { status: 502 });
 	}

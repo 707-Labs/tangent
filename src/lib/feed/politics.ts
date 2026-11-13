@@ -1,3 +1,6 @@
+import type { Candidate } from '$lib/wikipedia/types';
+import { candidateText } from './taste';
+
 /**
  * Sensitive-hub detection for feed dampening.
  *
@@ -61,4 +64,12 @@ const PATTERN = new RegExp(`\\b(${[...POLITICAL_STEMS, ...AUTHORITARIAN_STEMS].j
  *  (elections/presidents/parties, or the WWII/Nazi/authoritarian cluster). */
 export function isPolitical(text: string): boolean {
 	return PATTERN.test(text);
+}
+
+/**
+ * The one politics check the feed engine uses: the server's model flag when the
+ * candidate carries one, else the stem regex over title + description + categories.
+ */
+export function isPoliticalCandidate(candidate: Candidate): boolean {
+	return candidate.political ?? isPolitical(candidateText(candidate));
 }

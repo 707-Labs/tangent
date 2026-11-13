@@ -9,13 +9,16 @@
  */
 import { cached, cacheDelete, TTL } from '$lib/server/cache';
 import { fetchToday, type TodayFeed } from '$lib/wikipedia/featured';
+import { classifyPolitics } from '$lib/server/politicsModel';
 
-export async function todayFeed(): Promise<TodayFeed> {
+export async function todayFeed(platform?: App.Platform): Promise<TodayFeed> {
 	const now = new Date();
 	const key = `today:${now.getUTCFullYear()}-${now.getUTCMonth() + 1}-${now.getUTCDate()}`;
 
 	try {
-		const feed = await cached(key, TTL.long, () => fetchToday(now));
+		const feed = await cached(key, TTL.long, () =>
+			fetchToday(now, (candidates) => classifyPolitics(platform?.env?.AI, candidates))
+		);
 		if (feed.sections.length === 0) cacheDelete(key);
 		return feed;
 	} catch {
