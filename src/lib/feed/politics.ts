@@ -78,3 +78,17 @@ export function isPolitical(text: string): boolean {
 export function isPoliticalCandidate(candidate: Candidate): boolean {
 	return candidate.political === true || isPolitical(candidateText(candidate));
 }
+
+/**
+ * Injection guard threshold: a model answer that flags more than this share of a pool the
+ * word rules left alone is discarded (see `$lib/server/politicsModel`). On 7,974 feed-sim
+ * pools prompt v2 never exceeded 0.41.
+ */
+export const FLOOD_SHARE = 0.5;
+
+/** Share of `candidates` the model flags that the word rules do not. */
+export function modelOnlyShare(candidates: Candidate[], flags: ReadonlyMap<string, boolean>): number {
+	if (candidates.length === 0) return 0;
+	const modelOnly = candidates.filter((c) => flags.get(c.title) && !isPolitical(candidateText(c))).length;
+	return modelOnly / candidates.length;
+}

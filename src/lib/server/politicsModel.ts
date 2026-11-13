@@ -16,8 +16,7 @@
  * per-isolate daily call cap, or an answer that floods the pool (see {@link FLOOD_SHARE}).
  */
 import type { Candidate } from '$lib/wikipedia/types';
-import { candidateText } from '$lib/feed/taste';
-import { isPolitical } from '$lib/feed/politics';
+import { FLOOD_SHARE, modelOnlyShare } from '$lib/feed/politics';
 import { createCache, TTL } from './cache';
 import { recordEvent } from './metrics';
 
@@ -48,11 +47,18 @@ const MAX_CATEGORIES = 8;
  * Circuit breaker, per isolate. The timeout does not cancel `ai.run` (the call keeps
  * running and is billed), and a failed pool is not cached, so a slow model would otherwise
  * be called again on every request. After {@link BREAKER_FAILURES} failures within
- * {@link BREAKER_WINDOW_MS}, the model is skipped for {@link BREAKER_COOLDOWN_MS}.
+ * {@link BREAKER_WINDOW_MS}, the model is skipped for {@link BREAKER_COOLDOWN_MS}; then a
+ * single trial request goes through, and only its success closes the breaker.
+ *
+ * Failures are counted when they return, so concurrency is bounded too: at most
+ * {@link MAX_IN_FLIGHT} pools are classified at once and the rest use the word rules.
+ * Before the breaker opens, an isolate starts at most MAX_IN_FLIGHT + BREAKER_FAILURES = 13
+ * pool classifications (one call per 64 candidates each); after that, one per cool-down.
  */
 export const BREAKER_FAILURES = 5;
 export const BREAKER_WINDOW_MS = 60_000;
 export const BREAKER_COOLDOWN_MS = 5 * 60_000;
+export const MAX_IN_FLIGHT = 8;
 /**
  * Hard cap on model calls per isolate per UTC day (about $4.30 at 5,600 tokens a call).
  * It bounds one isolate, not the account: a global bound needs a rate limit in front of
@@ -60,43 +66,58 @@ export const BREAKER_COOLDOWN_MS = 5 * 60_000;
  */
 export const MAX_CALLS_PER_DAY = 20_000;
 /**
- * Injection guard: if the model flags more than this share of a pool (of at least
+ * Injection guard: if the model flags more than `FLOOD_SHARE` of a pool (of at least
  * {@link FLOOD_MIN_POOL} items) that the word rules did not flag, its answer is discarded
- * and the word rules decide. On 7,974 feed-sim pools prompt v2 never exceeded 0.41.
+ * and the word rules decide. The start page applies the same share per shelf.
  */
-export const FLOOD_SHARE = 0.5;
+export { FLOOD_SHARE };
 export const FLOOD_MIN_POOL = 8;
 
-const guards = { failures: [] as number[], openUntil: 0, day: '', calls: 0 };
+const guards = { failures: [] as number[], openUntil: 0, trial: false, inFlight: 0, day: '', calls: 0 };
 
 /** Test hook: reset the per-isolate breaker and call counter. */
 export function resetPoliticsGuards(): void {
-	guards.failures = [];
-	guards.openUntil = 0;
-	guards.day = '';
-	guards.calls = 0;
+	Object.assign(guards, { failures: [], openUntil: 0, trial: false, inFlight: 0, day: '', calls: 0 });
 }
 
-function recordFailure(now: number): void {
+type Ticket = { trial: boolean };
+
+/**
+ * Reserves `calls` model calls, or returns null when the breaker, the in-flight bound or
+ * the daily cap says no. Every ticket must be settled.
+ */
+function admit(now: number, calls: number): Ticket | null {
+	if (now < guards.openUntil) return null;
+	const halfOpen = guards.openUntil > 0;
+	if (halfOpen && guards.trial) return null;
+	if (guards.inFlight >= MAX_IN_FLIGHT) return null;
+	const day = new Date(now).toISOString().slice(0, 10);
+	if (guards.day !== day) {
+		guards.day = day;
+		guards.calls = 0;
+	}
+	if (guards.calls + calls > MAX_CALLS_PER_DAY) return null;
+	guards.calls += calls;
+	guards.inFlight++;
+	if (halfOpen) guards.trial = true;
+	return { trial: halfOpen };
+}
+
+function settle(ticket: Ticket, ok: boolean, now: number): void {
+	guards.inFlight--;
+	if (ticket.trial) {
+		guards.trial = false;
+		guards.openUntil = ok ? 0 : now + BREAKER_COOLDOWN_MS;
+		guards.failures = [];
+		return;
+	}
+	if (ok) return;
 	guards.failures = guards.failures.filter((t) => now - t < BREAKER_WINDOW_MS);
 	guards.failures.push(now);
 	if (guards.failures.length >= BREAKER_FAILURES) {
 		guards.openUntil = now + BREAKER_COOLDOWN_MS;
 		guards.failures = [];
 	}
-}
-
-/** Reserves `calls` model calls for today, or returns false when the breaker or cap says no. */
-function admit(now: number, calls: number): boolean {
-	if (now < guards.openUntil) return false;
-	const day = new Date(now).toISOString().slice(0, 10);
-	if (guards.day !== day) {
-		guards.day = day;
-		guards.calls = 0;
-	}
-	if (guards.calls + calls > MAX_CALLS_PER_DAY) return false;
-	guards.calls += calls;
-	return true;
 }
 
 /**
@@ -120,8 +141,9 @@ const NOT_POLITICAL =
 function line(c: Candidate, i: number): string {
 	const categories = (c.categories ?? []).slice(0, MAX_CATEGORIES).map((x) => x.replace(/^Category:/, ''));
 	const data = JSON.stringify({ title: c.title, description: c.description ?? null, categories });
-	// Escape "<" too, so a description cannot close the <articles> block.
-	return `c${i}: ${data.replace(/</g, '\\u003c')}`;
+	// Escape "<" so a description cannot close the <articles> block, and U+2028 / U+2029,
+	// which JSON leaves raw but which read as line breaks.
+	return `c${i}: ${data.replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029')}`;
 }
 
 /** The Clef request for one chunk of at most {@link MAX_QUESTIONS} candidates. */
@@ -176,12 +198,15 @@ export async function classifyPolitics(
 	for (let i = 0; i < candidates.length; i += MAX_QUESTIONS) {
 		chunks.push(candidates.slice(i, i + MAX_QUESTIONS));
 	}
-	if (!admit(Date.now(), chunks.length)) return null;
+	const ticket = admit(Date.now(), chunks.length);
+	if (!ticket) return null;
+	let ok = false;
 	try {
 		const results = await withTimeout(
 			Promise.all(chunks.map((chunk) => classifyChunk(ai, chunk))),
 			timeoutMs
 		);
+		ok = true;
 		const flags = new Map<string, boolean>();
 		chunks.forEach((chunk, ci) => chunk.forEach((c, i) => flags.set(c.title, results[ci][i])));
 		if (floods(candidates, flags)) {
@@ -190,16 +215,15 @@ export async function classifyPolitics(
 		}
 		return flags;
 	} catch {
-		recordFailure(Date.now());
 		return null;
+	} finally {
+		settle(ticket, ok, Date.now());
 	}
 }
 
-/** True when the model flagged more than {@link FLOOD_SHARE} of a pool the word rules left alone. */
+/** True when the model flagged more than `FLOOD_SHARE` of a pool the word rules left alone. */
 function floods(candidates: Candidate[], flags: ReadonlyMap<string, boolean>): boolean {
-	if (candidates.length < FLOOD_MIN_POOL) return false;
-	const modelOnly = candidates.filter((c) => flags.get(c.title) && !isPolitical(candidateText(c))).length;
-	return modelOnly / candidates.length > FLOOD_SHARE;
+	return candidates.length >= FLOOD_MIN_POOL && modelOnlyShare(candidates, flags) > FLOOD_SHARE;
 }
 
 /** Copy of the pool with `political` set from the flags; untouched titles keep the regex fallback. */

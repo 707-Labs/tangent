@@ -23,6 +23,7 @@ import { restGet } from './client';
 import { articleTitleFromHref } from './links';
 import { enrichByTitles } from './action';
 import { rankSeeds } from '$lib/feed/score';
+import { FLOOD_SHARE, modelOnlyShare } from '$lib/feed/politics';
 
 /** A REST page-summary, as embedded in the featured feed (only the fields we use). */
 interface FeedSummary {
@@ -122,6 +123,22 @@ const NO_FLAGS: PoliticsFlags = new Map();
  * stays free of platform bindings; resolves to null when the model is unavailable.
  */
 export type PoliticsClassifier = (candidates: Candidate[]) => Promise<PoliticsFlags | null>;
+
+/**
+ * The flags one shelf may use. The pool-wide flood guard cannot protect a small shelf (the
+ * featured shelf holds one article), so each shelf repeats the share test on its own
+ * candidates: if the model alone would remove more than `FLOOD_SHARE` of them, that shelf
+ * is ranked by the word rules only. A lone featured article is therefore never removed by
+ * the model alone.
+ */
+function shelfFlags(candidates: Candidate[], flags: PoliticsFlags): PoliticsFlags {
+	return flags.size > 0 && modelOnlyShare(candidates, flags) > FLOOD_SHARE ? NO_FLAGS : flags;
+}
+
+/** The flags one shelf of summaries may use; see {@link shelfFlags}. */
+function summaryShelfFlags(summaries: FeedSummary[], flags: PoliticsFlags): PoliticsFlags {
+	return flags.size > 0 ? shelfFlags(summaries.map((s) => summaryToCandidate(s)), flags) : flags;
+}
 
 /** A feed summary as a uniform-position candidate (so rankSeeds orders on merit alone). */
 function summaryToCandidate(s: FeedSummary, flags: PoliticsFlags = NO_FLAGS): Candidate {
@@ -256,7 +273,7 @@ async function dykSection(
 	if (titles.length === 0) return null;
 
 	const enriched = await enrichByTitles(titles);
-	const flags = (classify && (await classify(enriched))) ?? NO_FLAGS;
+	const flags = shelfFlags(enriched, (classify && (await classify(enriched))) ?? NO_FLAGS);
 	const picks = rankSeeds(
 		enriched.map((c) => (flags.has(c.title) ? { ...c, political: flags.get(c.title) } : c))
 	)
@@ -303,12 +320,15 @@ export async function fetchToday(date: Date, classify?: PoliticsClassifier): Pro
 		classify ? classify(unique).then((f) => f ?? NO_FLAGS) : Promise.resolve(NO_FLAGS),
 		dykSection(feed.dyk ?? [], classify)
 	]);
+	const onThisDay = feed.onthisday ?? [];
+	const news = feed.news ?? [];
+	const trending = feed.mostread?.articles ?? [];
 	const sections = [
-		onThisDaySection(feed.onthisday ?? [], flags),
+		onThisDaySection(onThisDay, summaryShelfFlags(onThisDay.flatMap((e) => e.pages ?? []), flags)),
 		dyk,
-		featuredSection(feed.tfa, flags),
-		newsSection(feed.news ?? [], flags),
-		trendingSection(feed.mostread?.articles ?? [], flags)
+		featuredSection(feed.tfa, summaryShelfFlags(feed.tfa ? [feed.tfa] : [], flags)),
+		newsSection(news, summaryShelfFlags(news.flatMap((n) => n.links ?? []), flags)),
+		trendingSection(trending, summaryShelfFlags(trending, flags))
 	].filter((s): s is TodaySection => s !== null);
 
 	return { date: isoDate, sections };
