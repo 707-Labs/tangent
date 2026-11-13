@@ -6,6 +6,7 @@ import {
 	classifyPolitics,
 	withPoliticsFlags,
 	POLITICS_MODEL,
+	POLITICS_TIMEOUT_MS,
 	type AiRunner
 } from '../src/lib/server/politicsModel';
 
@@ -45,19 +46,24 @@ describe('isPoliticalCandidate', () => {
 		expect(isPoliticalCandidate(candidate({ title: 'Octopus' }))).toBe(false);
 	});
 
-	it('trusts the model flag over the regex in both directions', () => {
-		// The regex misses this hub: no stem in its title, description or categories.
+	it('adds model-flagged hubs the regex misses', () => {
+		// No stem in this hub's title, description or categories.
+		expect(isPoliticalCandidate(candidate({ title: 'Belovezha Accords' }))).toBe(false);
 		expect(isPoliticalCandidate(candidate({ title: 'Belovezha Accords', political: true }))).toBe(true);
-		// The regex sinks this battle through its "World War II" category.
+	});
+
+	it('never lets a false model flag clear a regex match', () => {
+		// The regex sinks world-war battles through their categories; that keeps walks
+		// out of the WWII basin, so the model must not undo it.
 		const battle = candidate({
 			title: 'Battle of Stalingrad',
 			categories: ['Category:Battles of World War II'],
 			political: false
 		});
-		expect(isPoliticalCandidate(battle)).toBe(false);
+		expect(isPoliticalCandidate(battle)).toBe(true);
 	});
 
-	it('feeds the seed filter, so a flagged seed is dropped and a cleared one kept', () => {
+	it('feeds the seed filter: a flagged seed is dropped, a regex match stays dropped', () => {
 		const ranked = rankSeeds([
 			candidate({ title: 'Belovezha Accords', description: '1991 agreement', political: true }),
 			candidate({
@@ -65,9 +71,10 @@ describe('isPoliticalCandidate', () => {
 				description: 'Major battle',
 				categories: ['Category:Battles of World War II'],
 				political: false
-			})
+			}),
+			candidate({ title: 'Octopus', description: 'marine mollusc', political: false })
 		]);
-		expect(ranked.map((c) => c.title)).toEqual(['Battle of Stalingrad']);
+		expect(ranked.map((c) => c.title)).toEqual(['Octopus']);
 	});
 });
 
@@ -125,6 +132,31 @@ describe('withPoliticsFlags', () => {
 		const retried = await withPoliticsFlags('test:retry', pool, platformWith(ai));
 		expect(ai.run).toHaveBeenCalledTimes(1);
 		expect(retried[0].political).toBe(false);
+	});
+
+	it('keeps the word rules when the model call fails or times out', async () => {
+		const pool = [
+			candidate({ title: 'Battle of Stalingrad', categories: ['Category:Battles of World War II'] }),
+			candidate({ title: '2020 United States presidential election' }),
+			candidate({ title: 'Belovezha Accords' }),
+			candidate({ title: 'Octopus' })
+		];
+		const failing = { run: vi.fn(() => Promise.reject(new Error('down'))) };
+		const hanging = { run: vi.fn(() => new Promise<never>(() => {})) };
+		vi.useFakeTimers();
+		try {
+			const timedOutPending = withPoliticsFlags('test:timeout-rules', pool, platformWith(hanging));
+			await vi.advanceTimersByTimeAsync(POLITICS_TIMEOUT_MS + 1);
+			const timedOut = await timedOutPending;
+			const failed = await withPoliticsFlags('test:fail-rules', pool, platformWith(failing));
+			for (const out of [failed, timedOut]) {
+				expect(out.map((c) => c.political)).toEqual([undefined, undefined, undefined, undefined]);
+				// Regex matches still count; the model-only hub is missed, as before the model.
+				expect(out.map(isPoliticalCandidate)).toEqual([true, true, false, false]);
+			}
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it('leaves the pool untouched when the platform has no AI binding', async () => {

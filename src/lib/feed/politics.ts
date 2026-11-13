@@ -67,9 +67,14 @@ export function isPolitical(text: string): boolean {
 }
 
 /**
- * The one politics check the feed engine uses: the server's model flag when the
- * candidate carries one, else the stem regex over title + description + categories.
+ * The one politics check the feed engine uses: true when the server's model flagged
+ * the candidate OR the stem regex matches its title + description + categories.
+ *
+ * The model can only add a flag; a `political: false` never clears a regex match. When
+ * the model call failed or timed out the flag is absent and the regex alone decides.
+ * This either-or rule is Tanner's decision of 2026-11-13; see
+ * docs/specs/2026-07-16-run-based-feed-design.md (Goals).
  */
 export function isPoliticalCandidate(candidate: Candidate): boolean {
-	return candidate.political ?? isPolitical(candidateText(candidate));
+	return candidate.political === true || isPolitical(candidateText(candidate));
 }

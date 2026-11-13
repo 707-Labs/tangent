@@ -3,11 +3,11 @@
  *
  * The feed dampens politics and the WWII / authoritarian cluster (see `$lib/feed/politics`).
  * The stem regex there misses hubs whose title, description and categories dodge every
- * stem ("Belovezha Accords", "Council of People's Commissars") and sinks things the
- * feed wants to keep (WWII battles and generals via their categories, mathematicians
- * with a stray category). This asks the model one yes/no question per candidate in a
- * single call and writes the answer to `candidate.political`; `isPoliticalCandidate`
- * reads that flag and falls back to the regex whenever it is missing.
+ * stem ("Belovezha Accords", "Council of People's Commissars"). This asks the model one
+ * yes/no question per candidate in a single call and writes the answer to
+ * `candidate.political`; `isPoliticalCandidate` counts a candidate as political when
+ * that flag is true OR the regex matches (see there for why the model never clears a
+ * regex match).
  *
  * Eval, 2026-11-13: 440 candidates from 11 feed-sim hops, hand-labelled by Claude (387
  * unambiguous). Regex: precision 0.785, recall 0.779. clef-flash with this prompt at
@@ -16,7 +16,8 @@
  * input tokens per 50-candidate hop, so about $0.00024 per hop.
  *
  * Every failure (no binding, timeout, error, malformed answer) returns the pool
- * unchanged, which is exactly the old regex behavior.
+ * unchanged, which is exactly the old regex behavior. The precision figure above is the
+ * model alone; under the either-or rule the regex's false positives still apply.
  */
 import type { Candidate } from '$lib/wikipedia/types';
 import { cached, TTL } from './cache';
