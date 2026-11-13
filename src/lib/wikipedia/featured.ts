@@ -23,7 +23,7 @@ import { restGet } from './client';
 import { articleTitleFromHref } from './links';
 import { enrichByTitles } from './action';
 import { rankSeeds } from '$lib/feed/score';
-import { FLOOD_SHARE, modelOnlyShare } from '$lib/feed/politics';
+import { FLOOD_SHARE, modelOnlyShare, removedShare } from '$lib/feed/politics';
 
 /** A REST page-summary, as embedded in the featured feed (only the fields we use). */
 interface FeedSummary {
@@ -126,13 +126,14 @@ export type PoliticsClassifier = (candidates: Candidate[]) => Promise<PoliticsFl
 
 /**
  * The flags one shelf may use. The pool-wide flood guard cannot protect a small shelf (the
- * featured shelf holds one article), so each shelf repeats the share test on its own
- * candidates: if the model alone would remove more than `FLOOD_SHARE` of them, that shelf
- * is ranked by the word rules only. A lone featured article is therefore never removed by
- * the model alone.
+ * featured shelf holds one article), so each shelf is checked on its own: if the model's
+ * flags would help remove more than `FLOOD_SHARE` of the shelf (counting what the word rules
+ * remove anyway), that shelf is ranked by the word rules only. The model alone therefore
+ * never removes a lone featured article, nor tips a shelf the word rules already halve.
  */
 function shelfFlags(candidates: Candidate[], flags: PoliticsFlags): PoliticsFlags {
-	return flags.size > 0 && modelOnlyShare(candidates, flags) > FLOOD_SHARE ? NO_FLAGS : flags;
+	if (flags.size === 0 || modelOnlyShare(candidates, flags) === 0) return flags;
+	return removedShare(candidates, flags) > FLOOD_SHARE ? NO_FLAGS : flags;
 }
 
 /** The flags one shelf of summaries may use; see {@link shelfFlags}. */

@@ -25,6 +25,15 @@ describe('start page shelves under a crafted model answer', () => {
 		expect(trendingTitles.some((t) => flagged.has(t))).toBe(false);
 	});
 
+	it('does not let one model-only flag empty a shelf the word rules already halve', async () => {
+		restGet.mockResolvedValue({
+			mostread: { articles: [{ title: '2024 United States presidential election', description: 'election' }, summary('Octopus')] }
+		});
+		const classify = vi.fn(async () => new Map([['Octopus', true]]));
+		const feed = await fetchToday(new Date('2026-11-13T12:00:00Z'), classify);
+		expect(feed.sections.find((s) => s.id === 'trending')?.picks.map((p) => p.title)).toEqual(['Octopus']);
+	});
+
 	it('still drops a featured article the word rules flag', async () => {
 		restGet.mockResolvedValue({ tfa: { title: '2024 United States presidential election', description: 'election' } });
 		const feed = await fetchToday(new Date('2026-11-13T12:00:00Z'), async () => new Map());

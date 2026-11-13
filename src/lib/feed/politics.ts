@@ -92,3 +92,10 @@ export function modelOnlyShare(candidates: Candidate[], flags: ReadonlyMap<strin
 	const modelOnly = candidates.filter((c) => flags.get(c.title) && !isPolitical(candidateText(c))).length;
 	return modelOnly / candidates.length;
 }
+
+/** Share of `candidates` that would be dropped as political: model flag OR word rules. */
+export function removedShare(candidates: Candidate[], flags: ReadonlyMap<string, boolean>): number {
+	if (candidates.length === 0) return 0;
+	const removed = candidates.filter((c) => flags.get(c.title) || isPolitical(candidateText(c))).length;
+	return removed / candidates.length;
+}

@@ -73,24 +73,41 @@ export const MAX_CALLS_PER_DAY = 20_000;
 export { FLOOD_SHARE };
 export const FLOOD_MIN_POOL = 8;
 
-const guards = { failures: [] as number[], openUntil: 0, trial: false, inFlight: 0, day: '', calls: 0 };
+/**
+ * A reserved model call. It expires {@link TICKET_TTL_FACTOR} x its timeout after admission:
+ * work tied to a request may be cancelled when the client disconnects, so `settle` may never
+ * run, and an unreleased slot or trial would otherwise stop the model in this isolate for good.
+ */
+type Ticket = { trial: boolean; expires: number };
+export const TICKET_TTL_FACTOR = 2;
+
+const fresh = () => ({
+	failures: [] as number[],
+	openUntil: 0,
+	trialTicket: null as Ticket | null,
+	tickets: new Set<Ticket>(),
+	day: '',
+	calls: 0
+});
+const guards = fresh();
 
 /** Test hook: reset the per-isolate breaker and call counter. */
 export function resetPoliticsGuards(): void {
-	Object.assign(guards, { failures: [], openUntil: 0, trial: false, inFlight: 0, day: '', calls: 0 });
+	Object.assign(guards, fresh());
 }
-
-type Ticket = { trial: boolean };
 
 /**
  * Reserves `calls` model calls, or returns null when the breaker, the in-flight bound or
- * the daily cap says no. Every ticket must be settled.
+ * the daily cap says no. Tickets past their expiry no longer hold a slot or the trial.
  */
-function admit(now: number, calls: number): Ticket | null {
+function admit(now: number, calls: number, timeoutMs: number): Ticket | null {
+	for (const t of guards.tickets) if (t.expires <= now) guards.tickets.delete(t);
+	if (guards.trialTicket && guards.trialTicket.expires <= now) guards.trialTicket = null;
+
 	if (now < guards.openUntil) return null;
 	const halfOpen = guards.openUntil > 0;
-	if (halfOpen && guards.trial) return null;
-	if (guards.inFlight >= MAX_IN_FLIGHT) return null;
+	if (halfOpen && guards.trialTicket) return null;
+	if (guards.tickets.size >= MAX_IN_FLIGHT) return null;
 	const day = new Date(now).toISOString().slice(0, 10);
 	if (guards.day !== day) {
 		guards.day = day;
@@ -98,15 +115,16 @@ function admit(now: number, calls: number): Ticket | null {
 	}
 	if (guards.calls + calls > MAX_CALLS_PER_DAY) return null;
 	guards.calls += calls;
-	guards.inFlight++;
-	if (halfOpen) guards.trial = true;
-	return { trial: halfOpen };
+	const ticket: Ticket = { trial: halfOpen, expires: now + TICKET_TTL_FACTOR * timeoutMs };
+	guards.tickets.add(ticket);
+	if (halfOpen) guards.trialTicket = ticket;
+	return ticket;
 }
 
 function settle(ticket: Ticket, ok: boolean, now: number): void {
-	guards.inFlight--;
+	guards.tickets.delete(ticket);
 	if (ticket.trial) {
-		guards.trial = false;
+		if (guards.trialTicket === ticket) guards.trialTicket = null;
 		guards.openUntil = ok ? 0 : now + BREAKER_COOLDOWN_MS;
 		guards.failures = [];
 		return;
@@ -198,7 +216,7 @@ export async function classifyPolitics(
 	for (let i = 0; i < candidates.length; i += MAX_QUESTIONS) {
 		chunks.push(candidates.slice(i, i + MAX_QUESTIONS));
 	}
-	const ticket = admit(Date.now(), chunks.length);
+	const ticket = admit(Date.now(), chunks.length, timeoutMs);
 	if (!ticket) return null;
 	let ok = false;
 	try {

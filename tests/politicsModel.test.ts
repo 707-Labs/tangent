@@ -11,6 +11,7 @@ import {
 	BREAKER_FAILURES,
 	MAX_CALLS_PER_DAY,
 	MAX_IN_FLIGHT,
+	TICKET_TTL_FACTOR,
 	POLITICS_MODEL,
 	POLITICS_TIMEOUT_MS,
 	type AiRunner
@@ -290,5 +291,49 @@ describe('breaker trial and concurrency', () => {
 		expect(state).not.toMatch(/[\u2028\u2029]/);
 		const block = state.slice(state.indexOf('<articles>\n') + 11, state.lastIndexOf('\n</articles>'));
 		expect(JSON.parse(block.replace(/^c0: /, ''))).toMatchObject({ description });
+	});
+});
+
+describe('calls that never settle (request cancelled mid-call)', () => {
+	// With fake timers that never run, the 800 ms timeout never fires and settle() never
+	// runs, as when the runtime cancels the request's work.
+	const pool = [candidate({ title: 'Octopus' })];
+	const never = () => ({ run: vi.fn(() => new Promise<never>(() => {})) });
+	const expiry = TICKET_TTL_FACTOR * POLITICS_TIMEOUT_MS;
+
+	it('releases stuck in-flight slots after their expiry', async () => {
+		vi.useFakeTimers();
+		try {
+			const stuck = never();
+			for (let i = 0; i < MAX_IN_FLIGHT; i++) void classifyPolitics(stuck, pool);
+			const ai = stubAi({});
+			expect(await classifyPolitics(ai, pool, undefined)).toBeNull(); // all slots held
+			expect(ai.run).not.toHaveBeenCalled();
+			vi.setSystemTime(Date.now() + expiry + 1);
+			const next = classifyPolitics(ai, pool);
+			expect(ai.run).toHaveBeenCalledTimes(1);
+			expect(await next).toEqual(new Map([['Octopus', false]]));
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('releases a stuck trial so the breaker can close again', async () => {
+		vi.useFakeTimers();
+		try {
+			const failing = { run: vi.fn(() => Promise.reject(new Error('slow'))) };
+			for (let i = 0; i < BREAKER_FAILURES; i++) await classifyPolitics(failing, pool);
+			vi.setSystemTime(Date.now() + BREAKER_COOLDOWN_MS + 1);
+			void classifyPolitics(never(), pool); // the trial, never settles
+
+			const ai = stubAi({});
+			expect(await classifyPolitics(ai, pool)).toBeNull(); // trial still held
+			vi.setSystemTime(Date.now() + expiry + 1);
+			expect(await classifyPolitics(ai, pool)).toEqual(new Map([['Octopus', false]])); // new trial succeeds
+			expect(await classifyPolitics(ai, pool)).not.toBeNull(); // closed
+			expect(ai.run).toHaveBeenCalledTimes(2);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });

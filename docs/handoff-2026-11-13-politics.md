@@ -135,6 +135,18 @@ needs the untracked feed-sim result and cache files.
     breaker opens, then one per 5-minute cool-down. Each classification is one call per
     64 candidates.
 
+## After approval (2026-11-13)
+
+- **Tickets expire.** In-flight slots and the trial now expire at twice the call's timeout.
+  A request cancelled mid-call (so `settle` never runs) can no longer stop the model in an
+  isolate for good.
+- **Shelf test counts word-rule hits.** A shelf drops the model flags when model OR word
+  rules would remove more than half of it. One model-only flag can no longer empty a
+  shelf the word rules already halve.
+- **Post-deploy check:** watch for an isolate where the model stops being called while
+  traffic continues.
+- **The feed simulation's history result is from v2, not v3.**
+
 ## Not done
 
 - Tanner has not confirmed the definition.
