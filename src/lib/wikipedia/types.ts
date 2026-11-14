@@ -56,6 +56,13 @@ export interface Candidate {
 	 * engine boosts earlier links so the feed follows what the article is about.
 	 */
 	position: number;
+	/**
+	 * Server-set political-topic flag from the Workers AI classifier
+	 * (`$lib/server/politicsModel`). Absent when the model was unavailable. Readers go
+	 * through `isPoliticalCandidate`, which treats a candidate as political when this
+	 * flag is true or the stem regex matches.
+	 */
+	political?: boolean;
 }
 
 export interface SearchResult {

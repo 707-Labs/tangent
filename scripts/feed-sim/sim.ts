@@ -27,7 +27,8 @@ import { specificity, dfWeight } from '../../src/lib/feed/score.ts';
 import { categoryTokenSet, tokenize } from '../../src/lib/feed/tokens.ts';
 import { eraBuckets, placeTokens, type TangentDirection } from '../../src/lib/feed/directions.ts';
 import { tasteAffinity, intrigue, type TasteId } from '../../src/lib/feed/taste.ts';
-import { isPolitical } from '../../src/lib/feed/politics.ts';
+import { isPoliticalCandidate } from '../../src/lib/feed/politics.ts';
+import { classifyPolitics, applyPoliticsFlags, POLITICS_PROMPT_VERSION } from '../../src/lib/server/politicsModel.ts';
 import { FEED } from '../../src/lib/feed/config.ts';
 import type { Candidate } from '../../src/lib/wikipedia/types.ts';
 import { writeFileSync, readFileSync, existsSync } from 'node:fs';
@@ -103,6 +104,36 @@ async function getCandidates(title: string): Promise<FetchOutcome> {
 }
 function flushCache() {
 	writeFileSync(CACHE_PATH, JSON.stringify(cache));
+	if (POLITICS_URL) writeFileSync(POLITICS_CACHE_PATH, JSON.stringify(politicsCache));
+}
+
+// Model arm: SIM_POLITICS_URL points at a Worker that forwards the request body to
+// env.AI.run (Clef) and answers { out }. Unset = regex arm (the production fallback).
+// Flags are memoized per tip in politics-cache.<prompt version>.json, mirroring the server's
+// per-pool cache, so a prompt change never reuses another prompt's flags.
+const POLITICS_URL = process.env.SIM_POLITICS_URL;
+const POLITICS_CACHE_PATH = `${import.meta.dir}/politics-cache.${POLITICS_PROMPT_VERSION}.json`;
+const politicsCache: Record<string, Record<string, boolean>> =
+	POLITICS_URL && existsSync(POLITICS_CACHE_PATH) ? JSON.parse(readFileSync(POLITICS_CACHE_PATH, 'utf8')) : {};
+let politicsFallbacks = 0;
+const politicsAi = {
+	run: async (_model: string, input: unknown) => {
+		const res = await fetch(POLITICS_URL!, { method: 'POST', body: JSON.stringify(input) });
+		return ((await res.json()) as { out?: unknown }).out;
+	}
+};
+async function withSimPoliticsFlags(tip: string, cands: Candidate[]): Promise<Candidate[]> {
+	if (!POLITICS_URL) return cands;
+	if (!politicsCache[tip]) {
+		// Generous timeout: the sim measures the model's judgment, not this Mac's network.
+		const flags = await classifyPolitics(politicsAi, cands, 10_000);
+		if (!flags) {
+			politicsFallbacks++;
+			return cands;
+		}
+		politicsCache[tip] = Object.fromEntries(flags);
+	}
+	return applyPoliticsFlags(cands, new Map(Object.entries(politicsCache[tip])));
 }
 
 // Seed descriptions (for recordSeen of the seed itself) via REST summary — one
@@ -230,8 +261,7 @@ function breakdown(c: Candidate, ctx: Ctx) {
 	const spec = specificity(c);
 	const position = c.position ?? FEED.positionHalfLife;
 	const cats = c.categories ?? [];
-	const blob = `${c.title} ${c.description ?? ''} ${cats.join(' ')}`;
-	const political = isPolitical(blob);
+	const political = isPoliticalCandidate(c);
 	// Base terms only — the run-phase terms (coherence in-run / variety at break)
 	// are reported informationally since a sink can land via either phase.
 	const terms = {
@@ -371,7 +401,8 @@ async function runJourney(
 	let preTangent: { run: RunCard[]; tip: string } | null = null;
 
 	for (let step = 1; step <= maxLen; step++) {
-		const { cands: candidates, failed } = await getCandidates(tip);
+		const { cands: fetched, failed } = await getCandidates(tip);
+		const candidates = await withSimPoliticsFlags(tip, fetched);
 		if (candidates.length === 0) {
 			deadEndedAt = step;
 			deadEndKind = failed ? 'fetch-failed' : 'no-links';
@@ -593,6 +624,7 @@ async function main() {
 	const results = await runAll(tasks, 2);
 	flushCache();
 	console.error(`Done in ${((Date.now() - t0) / 1000).toFixed(0)}s, ${fetchCount} live fetches, ${Object.keys(cache).length} cached titles.`);
+	if (POLITICS_URL) console.error(`Politics model: ${Object.keys(politicsCache).length} tips flagged, ${politicsFallbacks} regex fallbacks.`);
 
 	const outPath = `${import.meta.dir}/results-${mode}.json`;
 	writeFileSync(outPath, JSON.stringify(results, null, 0));

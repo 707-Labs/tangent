@@ -26,5 +26,9 @@
 	"send_email": [{ "name": "EMAIL", "remote": true }],
 	// Analytics Engine — anonymous, aggregate product metrics (events + non-identifying dimensions).
 	"observability": { "enabled": true, "head_sampling_rate": 1 },
+	// Workers AI: the Clef classifier that flags political candidates once per hop
+	// (src/lib/server/politicsModel.ts). Calls are metered; the feed falls back to the
+	// regex when the binding is missing or slow.
+	"ai": { "binding": "AI" },
 	"analytics_engine_datasets": [{ "binding": "METRICS", "dataset": "tangent_metrics" }]
 }

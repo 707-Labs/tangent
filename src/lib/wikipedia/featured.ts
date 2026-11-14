@@ -23,6 +23,7 @@ import { restGet } from './client';
 import { articleTitleFromHref } from './links';
 import { enrichByTitles } from './action';
 import { rankSeeds } from '$lib/feed/score';
+import { FLOOD_SHARE, modelOnlyShare, removedShare } from '$lib/feed/politics';
 
 /** A REST page-summary, as embedded in the featured feed (only the fields we use). */
 interface FeedSummary {
@@ -113,10 +114,38 @@ function displayTitle(s: FeedSummary): string {
 	return s.normalizedtitle ?? s.titles?.normalized ?? s.title.replace(/_/g, ' ');
 }
 
+/** Model politics flags by title (see `$lib/server/politicsModel`); empty means regex only. */
+type PoliticsFlags = ReadonlyMap<string, boolean>;
+const NO_FLAGS: PoliticsFlags = new Map();
+
+/**
+ * Classifies a pool in one batched model call. Injected by the server so this module
+ * stays free of platform bindings; resolves to null when the model is unavailable.
+ */
+export type PoliticsClassifier = (candidates: Candidate[]) => Promise<PoliticsFlags | null>;
+
+/**
+ * The flags one shelf may use. The pool-wide flood guard cannot protect a small shelf (the
+ * featured shelf holds one article), so each shelf is checked on its own: if the model's
+ * flags would help remove more than `FLOOD_SHARE` of the shelf (counting what the word rules
+ * remove anyway), that shelf is ranked by the word rules only. The model alone therefore
+ * never removes a lone featured article, nor tips a shelf the word rules already halve.
+ */
+function shelfFlags(candidates: Candidate[], flags: PoliticsFlags): PoliticsFlags {
+	if (flags.size === 0 || modelOnlyShare(candidates, flags) === 0) return flags;
+	return removedShare(candidates, flags) > FLOOD_SHARE ? NO_FLAGS : flags;
+}
+
+/** The flags one shelf of summaries may use; see {@link shelfFlags}. */
+function summaryShelfFlags(summaries: FeedSummary[], flags: PoliticsFlags): PoliticsFlags {
+	return flags.size > 0 ? shelfFlags(summaries.map((s) => summaryToCandidate(s)), flags) : flags;
+}
+
 /** A feed summary as a uniform-position candidate (so rankSeeds orders on merit alone). */
-function summaryToCandidate(s: FeedSummary): Candidate {
-	return {
-		title: displayTitle(s),
+function summaryToCandidate(s: FeedSummary, flags: PoliticsFlags = NO_FLAGS): Candidate {
+	const title = displayTitle(s);
+	const candidate: Candidate = {
+		title,
 		description: s.description ?? null,
 		thumbnail: s.thumbnail ?? null,
 		isDisambiguation: false,
@@ -124,6 +153,8 @@ function summaryToCandidate(s: FeedSummary): Candidate {
 		categories: [],
 		position: 0
 	};
+	const political = flags.get(title);
+	return political === undefined ? candidate : { ...candidate, political };
 }
 
 function toPick(c: Candidate, hook: string | null = null, year: number | null = null): TodayPick {
@@ -160,14 +191,14 @@ function dykSubject(html: string): string | null {
 	return null;
 }
 
-function featuredSection(tfa?: FeedSummary): TodaySection | null {
+function featuredSection(tfa: FeedSummary | undefined, flags: PoliticsFlags = NO_FLAGS): TodaySection | null {
 	if (!tfa) return null;
-	const picks = rankSeeds([summaryToCandidate(tfa)]).map((c) => toPick(c, tfa.extract ?? null));
+	const picks = rankSeeds([summaryToCandidate(tfa, flags)]).map((c) => toPick(c, tfa.extract ?? null));
 	return picks.length ? { id: 'featured', label: "Today's featured article", picks } : null;
 }
 
-function trendingSection(articles: FeedSummary[]): TodaySection | null {
-	const candidates = articles.map(summaryToCandidate).filter((c) => isArticleSeed(c.title));
+function trendingSection(articles: FeedSummary[], flags: PoliticsFlags = NO_FLAGS): TodaySection | null {
+	const candidates = articles.map((a) => summaryToCandidate(a, flags)).filter((c) => isArticleSeed(c.title));
 	const picks = rankSeeds(candidates)
 		.slice(0, SECTION_CAP)
 		.map((c) => toPick(c));
@@ -195,10 +226,10 @@ function bestPerGroup(
 	return picks;
 }
 
-function newsSection(stories: FeedNews[]): TodaySection | null {
+function newsSection(stories: FeedNews[], flags: PoliticsFlags = NO_FLAGS): TodaySection | null {
 	const picks = bestPerGroup(
 		stories.map((story) => ({
-			candidates: (story.links ?? []).map(summaryToCandidate).filter((c) => isArticleSeed(c.title)),
+			candidates: (story.links ?? []).map((l) => summaryToCandidate(l, flags)).filter((c) => isArticleSeed(c.title)),
 			hook: stripHtml(story.story) || null,
 			year: null
 		})),
@@ -207,13 +238,13 @@ function newsSection(stories: FeedNews[]): TodaySection | null {
 	return picks.length ? { id: 'news', label: 'In the news', picks } : null;
 }
 
-function onThisDaySection(events: FeedOnThisDay[]): TodaySection | null {
+function onThisDaySection(events: FeedOnThisDay[], flags: PoliticsFlags = NO_FLAGS): TodaySection | null {
 	// Rank every event (no cap yet), order the timeline oldest-first, then even-spread
 	// down to the cap so the shown rows span the centuries instead of clustering in
 	// the recent decades the feed lists first.
 	const all = bestPerGroup(
 		events.map((event) => ({
-			candidates: (event.pages ?? []).map(summaryToCandidate).filter((c) => isArticleSeed(c.title)),
+			candidates: (event.pages ?? []).map((p) => summaryToCandidate(p, flags)).filter((c) => isArticleSeed(c.title)),
 			hook: event.text ?? null,
 			year: event.year ?? null
 		})),
@@ -228,7 +259,10 @@ function onThisDaySection(events: FeedOnThisDay[]): TodaySection | null {
  * resolve each bolded subject to a full candidate via the Action API to get an image and
  * a Wikidata description for ranking, then re-attach the hook for display.
  */
-async function dykSection(items: FeedDyk[]): Promise<TodaySection | null> {
+async function dykSection(
+	items: FeedDyk[],
+	classify?: PoliticsClassifier
+): Promise<TodaySection | null> {
 	const hooks = new Map<string, string>();
 	const titles: string[] = [];
 	for (const item of items) {
@@ -240,7 +274,10 @@ async function dykSection(items: FeedDyk[]): Promise<TodaySection | null> {
 	if (titles.length === 0) return null;
 
 	const enriched = await enrichByTitles(titles);
-	const picks = rankSeeds(enriched)
+	const flags = shelfFlags(enriched, (classify && (await classify(enriched))) ?? NO_FLAGS);
+	const picks = rankSeeds(
+		enriched.map((c) => (flags.has(c.title) ? { ...c, political: flags.get(c.title) } : c))
+	)
 		.slice(0, SECTION_CAP)
 		.map((c) => toPick(c, hooks.get(c.title) ?? null));
 	return picks.length ? { id: 'dyk', label: 'Did you know…', picks } : null;
@@ -259,7 +296,7 @@ function feedDatePath(date: Date): string {
  * ranked through the feed's own judgment. Returns empty sections if the day's feed isn't
  * published (a 404), so the start page just falls back to its evergreen seeds.
  */
-export async function fetchToday(date: Date): Promise<TodayFeed> {
+export async function fetchToday(date: Date, classify?: PoliticsClassifier): Promise<TodayFeed> {
 	const path = feedDatePath(date);
 	const isoDate = path.replace(/\//g, '-');
 
@@ -271,13 +308,28 @@ export async function fetchToday(date: Date): Promise<TodayFeed> {
 	// tangent, and each row doubles as a ready-made launch — then the surprising DYK hooks.
 	// (It also keeps a single divisive featured article — the front page is often headlined
 	// by current political figures — out of the lead slot.)
-	const dyk = await dykSection(feed.dyk ?? []);
+	// One classification pass over every summary-backed seed (DYK subjects are only
+	// known after enrichment, so they get their own pass inside dykSection).
+	const summaries = [
+		...(feed.tfa ? [feed.tfa] : []),
+		...(feed.mostread?.articles ?? []),
+		...(feed.news ?? []).flatMap((n) => n.links ?? []),
+		...(feed.onthisday ?? []).flatMap((e) => e.pages ?? [])
+	];
+	const unique = [...new Map(summaries.map((s) => [displayTitle(s), summaryToCandidate(s)])).values()];
+	const [flags, dyk] = await Promise.all([
+		classify ? classify(unique).then((f) => f ?? NO_FLAGS) : Promise.resolve(NO_FLAGS),
+		dykSection(feed.dyk ?? [], classify)
+	]);
+	const onThisDay = feed.onthisday ?? [];
+	const news = feed.news ?? [];
+	const trending = feed.mostread?.articles ?? [];
 	const sections = [
-		onThisDaySection(feed.onthisday ?? []),
+		onThisDaySection(onThisDay, summaryShelfFlags(onThisDay.flatMap((e) => e.pages ?? []), flags)),
 		dyk,
-		featuredSection(feed.tfa),
-		newsSection(feed.news ?? []),
-		trendingSection(feed.mostread?.articles ?? [])
+		featuredSection(feed.tfa, summaryShelfFlags(feed.tfa ? [feed.tfa] : [], flags)),
+		newsSection(news, summaryShelfFlags(news.flatMap((n) => n.links ?? []), flags)),
+		trendingSection(trending, summaryShelfFlags(trending, flags))
 	].filter((s): s is TodaySection => s !== null);
 
 	return { date: isoDate, sections };

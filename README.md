@@ -26,6 +26,13 @@ bun run dev    # http://localhost:5173
 
 Other scripts: `bun run check` (svelte-check), `bun run test` (vitest), `bun run build`.
 
+**Local dev makes real, billed model calls.** `bun run dev` exposes the `AI` binding from
+`wrangler.jsonc` through the Cloudflare adapter's platform proxy, and Workers AI always runs
+remotely, even in local development
+([Cloudflare docs](https://developers.cloudflare.com/workers/wrangler/api/#supported-bindings)).
+So every uncached feed hop in dev sends one `@cf/cloudflare/clef-flash` call to the logged-in
+Cloudflare account (about $0.0002 each). Unit tests stub the binding and make no calls.
+
 ## How it works
 
 ```

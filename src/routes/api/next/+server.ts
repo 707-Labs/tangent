@@ -9,6 +9,7 @@ import { eraBuckets, placeTokens } from '$lib/feed/directions';
 import { categoryTokenSet } from '$lib/feed/tokens';
 import { resolveCard } from '$lib/server/resolveCard';
 import { cached, TTL } from '$lib/server/cache';
+import { withPoliticsFlags } from '$lib/server/politicsModel';
 
 /** Matches the web client's per-build retry budget for dud candidates. */
 const MAX_CARD_ATTEMPTS = 3;
@@ -26,7 +27,7 @@ const MAX_CARD_ATTEMPTS = 3;
  * Latency is hidden by the client's prefetch buffer: this decides the *next* card
  * while the user reads the current one, so the round trip never blocks a swipe.
  */
-export const POST: RequestHandler = async ({ request, setHeaders }) => {
+export const POST: RequestHandler = async ({ request, setHeaders, platform }) => {
 	let body: NextRequest;
 	try {
 		body = (await request.json()) as NextRequest;
@@ -50,6 +51,7 @@ export const POST: RequestHandler = async ({ request, setHeaders }) => {
 		candidates = await cached(key, TTL.long, () =>
 			related ? fetchRelated(from) : fetchExploreCandidates(from)
 		);
+		candidates = await withPoliticsFlags(key, candidates, platform);
 	} catch {
 		return json({ article: null, error: 'upstream error' }, { status: 502 });
 	}

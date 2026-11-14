@@ -7,9 +7,10 @@ const { fetchRelated, fetchExploreCandidates, selectNext } = vi.hoisted(() => ({
 vi.mock('../src/lib/wikipedia/action', () => ({ fetchRelated, fetchExploreCandidates }));
 vi.mock('../src/lib/feed/select', () => ({ selectNext }));
 vi.mock('../src/lib/server/resolveCard', () => ({ resolveCard: vi.fn() }));
-vi.mock('../src/lib/server/cache', () => ({
-	TTL: { long: 1000 }, cached: (_key: string, _ttl: number, acquire: () => Promise<unknown>) => acquire()
-}));
+vi.mock('../src/lib/server/cache', () => {
+	const cached = (_key: string, _ttl: number, acquire: () => Promise<unknown>) => acquire();
+	return { TTL: { long: 1000 }, cached, createCache: () => ({ cached, cacheDelete: () => {} }) };
+});
 import { POST } from '../src/routes/api/next/+server';
 
 async function scoreRequest(mode?: 'related', noSurprise?: boolean): Promise<EngineContext> {
@@ -49,5 +50,26 @@ describe('explicit related API steering', () => {
 
 	it('preserves explicitly disabled surprises in explore mode', async () => {
 		expect((await scoreRequest(undefined, true)).noSurprise).toBe(true);
+	});
+});
+
+describe('politics flags on the server-picked pool', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		selectNext.mockReturnValue(null);
+	});
+
+	it('hands selectNext candidates flagged by one Workers AI call', async () => {
+		fetchExploreCandidates.mockResolvedValue([
+			{ title: 'Belovezha Accords', description: null, thumbnail: null, isDisambiguation: false,
+				relation: 'link', categories: [], position: 0 }
+		]);
+		const run = vi.fn(async () => ({ answers: { c0: { type: 'noul', noul: 0.9 } } }));
+		const body: NextRequest = { fromTitle: 'Coffee', session: { seenTitles: [] },
+			interest: { tokenWeights: {}, tokenDocFreq: {} } };
+		await POST({ request: new Request('http://localhost/api/next', { method: 'POST', body: JSON.stringify(body) }),
+			setHeaders: vi.fn(), platform: { env: { AI: { run } } } } as unknown as Parameters<typeof POST>[0]);
+		expect(run).toHaveBeenCalledTimes(1);
+		expect(selectNext.mock.calls[0][0][0].political).toBe(true);
 	});
 });

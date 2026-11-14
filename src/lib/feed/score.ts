@@ -1,8 +1,8 @@
 import type { Candidate } from '$lib/wikipedia/types';
 import type { EngineContext } from './types';
 import { FEED } from './config';
-import { isPolitical } from './politics';
-import { candidateText, intrigue, tasteAffinity } from './taste';
+import { isPoliticalCandidate } from './politics';
+import { intrigue, tasteAffinity } from './taste';
 import { categoryTokenSet, tokenSet } from './tokens';
 
 /** DF-discounted token weight — w / (1 + ln(1 + df)). Same form as TF-IDF's IDF. */
@@ -215,7 +215,7 @@ export function scoreCandidate(candidate: Candidate, ctx: EngineContext): number
 	if (isSeedRestatement(candidate, ctx)) score += FEED.seedRestatementPenalty;
 
 	// Dampen politics, matching title + description + (when present) categories.
-	if (isPolitical(candidateText(candidate))) score += FEED.politicalPenalty;
+	if (isPoliticalCandidate(candidate)) score += FEED.politicalPenalty;
 
 	return score;
 }
@@ -258,7 +258,7 @@ const NEUTRAL_CONTEXT: EngineContext = {
 export function rankSeeds(candidates: Candidate[]): Candidate[] {
 	return candidates
 		.filter((c) => !c.isDisambiguation)
-		.filter((c) => !isPolitical(candidateText(c)))
+		.filter((c) => !isPoliticalCandidate(c))
 		.map((candidate) => ({ candidate, score: scoreCandidate(candidate, NEUTRAL_CONTEXT) }))
 		.sort((a, b) => b.score - a.score)
 		.map((entry) => entry.candidate);

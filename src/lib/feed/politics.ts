@@ -1,3 +1,6 @@
+import type { Candidate } from '$lib/wikipedia/types';
+import { candidateText } from './taste';
+
 /**
  * Sensitive-hub detection for feed dampening.
  *
@@ -61,4 +64,38 @@ const PATTERN = new RegExp(`\\b(${[...POLITICAL_STEMS, ...AUTHORITARIAN_STEMS].j
  *  (elections/presidents/parties, or the WWII/Nazi/authoritarian cluster). */
 export function isPolitical(text: string): boolean {
 	return PATTERN.test(text);
+}
+
+/**
+ * The one politics check the feed engine uses: true when the server's model flagged
+ * the candidate OR the stem regex matches its title + description + categories.
+ *
+ * The model can only add a flag; a `political: false` never clears a regex match. When
+ * the model call failed or timed out the flag is absent and the regex alone decides.
+ * This either-or rule is Tanner's decision of 2026-11-13; see
+ * docs/specs/2026-07-16-run-based-feed-design.md (Goals).
+ */
+export function isPoliticalCandidate(candidate: Candidate): boolean {
+	return candidate.political === true || isPolitical(candidateText(candidate));
+}
+
+/**
+ * Injection guard threshold: a model answer that flags more than this share of a pool the
+ * word rules left alone is discarded (see `$lib/server/politicsModel`). On 7,974 feed-sim
+ * pools prompt v2 never exceeded 0.41.
+ */
+export const FLOOD_SHARE = 0.5;
+
+/** Share of `candidates` the model flags that the word rules do not. */
+export function modelOnlyShare(candidates: Candidate[], flags: ReadonlyMap<string, boolean>): number {
+	if (candidates.length === 0) return 0;
+	const modelOnly = candidates.filter((c) => flags.get(c.title) && !isPolitical(candidateText(c))).length;
+	return modelOnly / candidates.length;
+}
+
+/** Share of `candidates` that would be dropped as political: model flag OR word rules. */
+export function removedShare(candidates: Candidate[], flags: ReadonlyMap<string, boolean>): number {
+	if (candidates.length === 0) return 0;
+	const removed = candidates.filter((c) => flags.get(c.title) || isPolitical(candidateText(c))).length;
+	return removed / candidates.length;
 }

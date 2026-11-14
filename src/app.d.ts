@@ -3,6 +3,7 @@
 // lib in browser code — a global reference swaps `Response.json()` to return `unknown`.
 import type { D1Database, CfProperties, ExecutionContext, AnalyticsEngineDataset } from '@cloudflare/workers-types';
 import type { SessionUser } from '$lib/server/auth/session';
+import type { AiRunner } from '$lib/server/politicsModel';
 
 declare global {
 	namespace App {
@@ -17,6 +18,8 @@ declare global {
 			env: {
 				DB: D1Database;
 				METRICS?: AnalyticsEngineDataset;
+				/** Workers AI. Optional so the feed degrades to the politics regex without it. */
+				AI?: AiRunner;
 			};
 			cf?: CfProperties;
 			ctx: ExecutionContext;
