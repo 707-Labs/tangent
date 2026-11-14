@@ -27,7 +27,8 @@ review is owed before merge.
 
 ## Done
 
-- **Definition and ten examples:** in the design doc, marked as an agent proposal.
+- **Definition and ten examples:** in the design doc. Drafted as an agent proposal;
+  Tanner confirmed it on 2026-11-13 ("Yes, confirm it").
 - **Prompt v2:** in `src/lib/server/politicsModel.ts`, with `POLITICS_PROMPT_VERSION = 'v2'`
   so cached v1 flags expire. Option 1 and the failure behaviour are unchanged: on a
   timeout (800 ms) or an error, the word rules alone decide.
@@ -131,9 +132,13 @@ needs the untracked feed-sim result and cache files.
   - After the cool-down, a single trial request goes through, and only its success
     closes the breaker.
   - At most 8 pools are classified at once per isolate; the rest use the word rules.
-  - Burst bound: at most 13 pool classifications (8 in flight + 5 failures) before the
-    breaker opens, then one per 5-minute cool-down. Each classification is one call per
-    64 candidates.
+  - When calls fail, the breaker opens after at most 13 pool classifications (8 in
+    flight + 5 failures), then allows one trial per 5-minute cool-down.
+  - Worst case: requests cancelled mid-call free their slots after 1.6 s and never count
+    as failures, so the breaker does not trip. Up to 8 calls can then start every 1.6 s
+    (about 5 per second), until the daily cap of 20,000 calls per isolate is reached, in
+    about 67 minutes. That is about $4.30 per isolate per day at 5,600 tokens a call.
+  - There is no account-wide limit without the WAF rule.
 
 ## After approval (2026-11-13)
 
@@ -149,7 +154,7 @@ needs the untracked feed-sim result and cache files.
 
 ## Not done
 
-- Tanner has not confirmed the definition.
+- The definition is confirmed (Tanner, 2026-11-13: "Yes, confirm it").
 - Deployed latency, timeout rate and real Cloudflare billing were never checked.
 - The rate limit for `/api/next` and `/api/links` is a proposal for Tanner (see PR 15).
 

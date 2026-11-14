@@ -81,8 +81,8 @@ grid: 660 journeys, 18,379 consecutive transitions; details in the feed-sim READ
   - **Changed 2026-11-13, Tanner's decision ("B"): the model is asked about current
     politics only.** The first prompt also flagged history, for example
     "Roman Empire" in 177 of 250 candidate pools in feed-sim. Tanner chose to narrow
-    the model to current politics and test again. He did not define the line. The
-    definition below is an **agent proposal for Tanner to confirm**:
+    the model to current politics and test again. An agent drafted the line below;
+    **Tanner confirmed it on 2026-11-13** ("Yes, confirm it"), so it is his decision:
     - **Political (model says yes):** the article is mainly about politics that is
       live today: living politicians and officeholders (including former ones still
       alive), parties and political movements that exist now, elections and
@@ -96,7 +96,7 @@ grid: 660 journeys, 18,379 consecutive transitions; details in the feed-sim READ
       languages, science and culture.
     - The word rules still apply under option 1, so a dead dictator or a world-war
       page is still dampened through the regex even when the model says no.
-    - Borderline examples (proposal):
+    - Borderline examples (confirmed with the definition):
 
       | Article | Side | Why |
       |---|---|---|
